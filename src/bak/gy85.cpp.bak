@@ -1,0 +1,90 @@
+#include "Arduino.h"
+#include "CalLib.h"
+#include "I2Cdev.h"
+#include "RTIMU.h"
+#include "RTIMUSettings.h"
+#include <EEPROM.h>
+#include <Wire.h>
+
+RTIMU *imu;             // the IMU object
+RTIMUSettings settings; // the settings object
+CALLIB_DATA calData;    // the calibration data
+
+//  SERIAL_PORT_SPEED defines the speed to use for the debug serial port
+
+#define SERIAL_PORT_SPEED 115200
+
+void setup() {
+  // calLibRead(0, &calData); // pick up existing mag data if there
+
+  calData.magValid = false;
+  for (int i = 0; i < 3; i++) {
+    calData.magMin[i] = 10000000; // init mag cal data
+    calData.magMax[i] = -10000000;
+  }
+
+  Serial.begin(SERIAL_PORT_SPEED);
+  delay(2000);
+  Serial.println("ArduinoMagCal starting");
+  Serial.println("Enter s to save current data to EEPROM");
+  Wire.begin();
+
+  imu = RTIMU::createIMU(&settings); // create the imu object
+  Serial.printf("IMU init: %d\n", imu->IMUInit());
+  imu->setCalibrationMode(true); // make sure we get raw data
+  Serial.print("ArduinoIMU calibrating device ");
+  Serial.println(imu->IMUName());
+}
+
+void loop() {
+  boolean changed;
+  RTVector3 mag;
+
+  Serial.println(imu->IMURead());
+  Serial.printf("X: %f\n", imu->getCompass().x());
+
+  delay(1500);
+
+  // if (imu->IMURead()) { // get the latest data
+  //   changed = false;
+  //   mag = imu->getCompass();
+  //   for (int i = 0; i < 3; i++) {
+  //     if (mag.data(i) < calData.magMin[i]) {
+  //       calData.magMin[i] = mag.data(i);
+  //       changed = true;
+  //     }
+  //     if (mag.data(i) > calData.magMax[i]) {
+  //       calData.magMax[i] = mag.data(i);
+  //       changed = true;
+  //     }
+  //   }
+
+  //   if (changed) {
+  //     Serial.println("-------");
+  //     Serial.print("minX: ");
+  //     Serial.print(calData.magMin[0]);
+  //     Serial.print(" maxX: ");
+  //     Serial.print(calData.magMax[0]);
+  //     Serial.println();
+  //     Serial.print("minY: ");
+  //     Serial.print(calData.magMin[1]);
+  //     Serial.print(" maxY: ");
+  //     Serial.print(calData.magMax[1]);
+  //     Serial.println();
+  //     Serial.print("minZ: ");
+  //     Serial.print(calData.magMin[2]);
+  //     Serial.print(" maxZ: ");
+  //     Serial.print(calData.magMax[2]);
+  //     Serial.println();
+  //   }
+  // }
+
+  // if (Serial.available()) {
+  //   if (Serial.read() == 's') { // save the data
+  //     calData.magValid = true;
+  //     calLibWrite(0, &calData);
+  //     Serial.print("Mag cal data saved for device ");
+  //     Serial.println(imu->IMUName());
+  //   }
+  // }
+}
