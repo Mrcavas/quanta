@@ -5,30 +5,36 @@
 
 uPIDfast<I_SATURATE | PID_REVERSE> pid;
 TaskHandle_t pidTaskHandle = NULL;
-std::function<float()> getYaw;
+float *pYaw;
 std::function<void(float)> onOutput;
 uint16_t period;
 
-void setupPID(uint16_t period_, std::function<float()> getYaw_,
+void setupPID(uint16_t period_, float *pYaw_,
               std::function<void(float)> onOutput_) {
+
+  pid.outMax = SERVO_MAX_DIFF;
+  pid.outMin = -SERVO_MAX_DIFF;
+  pid.setpoint = 0;
+
   period = period_;
-  getYaw = getYaw_;
+  pYaw = pYaw_;
   onOutput = onOutput_;
 }
 
 void pidTask(void *parameter) {
-  const auto yawAnchor = *((float *)parameter);
-  TickType_t lastWakeTime = xTaskGetTickCount();
-
+  const float yawAnchor = *pYaw;
   const auto freq = pdMS_TO_TICKS(period);
   pid.setDt(period);
 
+  TickType_t lastWakeTime = xTaskGetTickCount();
   for (;;) {
-    auto input = yawAnchor - getYaw();
-    float output = pid.compute(input);
-    Serial.printf("====== anchor: %f; yaw: %f\n====== pid %f -> %f\n",
-                  yawAnchor, getYaw(), input, output);
-    onOutput(output);
+    float a = *pYaw + 180 - yawAnchor;
+    if (a < 0)
+      a += 360;
+    if (a > 360)
+      a -= 360;
+
+    onOutput(pid.compute(a - 180));
 
     vTaskDelayUntil(&lastWakeTime, freq);
   }
@@ -42,13 +48,11 @@ void saveCoefficients() {
 }
 
 bool loadCoefficients() {
-  if (!LittleFS.exists("/pid_conf")) {
-    saveCoefficients();
+  if (!LittleFS.exists("/pid_conf"))
     return false;
-  }
 
   File f = LittleFS.open("/pid_conf", "r");
-  float buf[3] = {0, 0, 0};
+  float buf[3] = {1, 0, 0};
 
   f.read((uint8_t *)buf, sizeof(buf));
 
@@ -59,15 +63,15 @@ bool loadCoefficients() {
   return true;
 }
 
-void startPidTask(float yawAnchor) {
-  xTaskCreatePinnedToCore(pidTask, "PID Task", 4096, &yawAnchor, 1,
-                          &pidTaskHandle, 1);
+void startPidTask() {
+  xTaskCreatePinnedToCore(pidTask, "PID Task", 4096, NULL, 1, &pidTaskHandle,
+                          1);
 }
 
 void stopPidTask() {
   if (pidTaskHandle != NULL) {
     vTaskDelete(pidTaskHandle);
     pidTaskHandle = NULL;
-    Serial.println("PID task deleted");
+    // Serial.printfln("PID task deleted");
   }
 }

@@ -33,8 +33,31 @@ export function buildUpdateCoeffPacket(coeff: "p" | "i" | "d", value: number) {
   return buffer
 }
 
+export function buildCalibrationTogglePacket(calibrating: boolean) {
+  const [buffer, view] = makePacketView(0x1c, 1)
+
+  view.setUint8(0, +calibrating)
+
+  return buffer
+}
+
+export function buildCalibrationResetPacket() {
+  const [buffer, _] = makePacketView(0x16, 0)
+  return buffer
+}
+
+export function buildCalibrationSavePacket() {
+  const [buffer, _] = makePacketView(0x10, 0)
+  return buffer
+}
+
 export function buildInitPacket() {
   const [buffer, _] = makePacketView(0x01, 0)
+  return buffer
+}
+
+export function buildPingPacket() {
+  const [buffer, _] = makePacketView(0xff, 0)
   return buffer
 }
 

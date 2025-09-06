@@ -15,7 +15,7 @@
 
 extern AsyncWebSocket ws;
 
-int setupWS(
+bool setupWS(
     std::function<void(AsyncWebSocket *server, AsyncWebSocketClient *client,
                        const uint8_t *data, size_t len)>
         onMessage);

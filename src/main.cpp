@@ -1,7 +1,10 @@
+#include "main.h"
 #include "Arduino.h"
-#include "dmp.h"
+#include "calibration.h"
 #include "hexdump.h"
+#include "packets.h"
 #include "pid.h"
+#include "sensor.h"
 #include "ws.h"
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
@@ -20,37 +23,12 @@
 #define MOTOR_PIN 20
 #define BUTTON_PIN 10
 
-#define SERVO_MIDDLE 92
-#define SERVO_MAX_DIFF 50
-
 Servo servo = Servo();
-Button button(BUTTON_PIN);
-bool anchoring = false;
+// Button button(BUTTON_PIN);
+bool anchoring = false, calibrating = false;
+uint32_t lastPingTime = millis();
 
 void handleAnchoring();
-
-void sendInitPacket() {
-  auto buf = ws.makeBuffer(1 + 3 * sizeof(float));
-  uint8_t *p = buf->get();
-
-  p[0] = 0x01;
-  float kp = pid.getKp(), ki = pid.getKi(), kd = pid.getKd();
-  memcpy(p + 1, &kp, sizeof(float));
-  memcpy(p + 1 + sizeof(float), &ki, sizeof(float));
-  memcpy(p + 1 + 2 * sizeof(float), &kd, sizeof(float));
-
-  ws.binaryAll(buf);
-}
-
-void sendAnchoringPacket() {
-  auto buf = ws.makeBuffer(1 + sizeof(bool));
-  uint8_t *p = buf->get();
-
-  p[0] = 0x0a;
-  memcpy(p + 1, &anchoring, sizeof(bool));
-
-  ws.binaryAll(buf);
-}
 
 void handlePacket(uint8_t id, const uint8_t *data, size_t len) {
   if (id == 0x0c && len == 8) {
@@ -62,7 +40,7 @@ void handlePacket(uint8_t id, const uint8_t *data, size_t len) {
       servo.write(SERVO_PIN, SERVO_MIDDLE - angle);
     servo.write(MOTOR_PIN, speed);
 
-    Serial.printf("Got angle: %f, speed: %f\n", angle, speed);
+    // Serial.printff("Got angle: %f, speed: %f\n", angle, speed);
     return;
   }
 
@@ -88,33 +66,63 @@ void handlePacket(uint8_t id, const uint8_t *data, size_t len) {
   }
 
   if (id == 0x01 && len == 0) {
-    sendInitPacket();
-    Serial.println("New client, sending init");
+    ws.binaryAll(buildInitPacket(&ws, pid.getKp(), pid.getKi(), pid.getKd()));
+    // Serial.printfln("New client, sending init");
     return;
   }
 
-  Serial.printf("Unrecognized packet 0x%x!\n", id);
+  if (id == 0xff && len == 0) {
+    lastPingTime = millis();
+    return;
+  }
+
+  if (id == 0x1c && len == 1) {
+    memcpy(&calibrating, data, sizeof(boolean));
+    return;
+  }
+
+  if (id == 0x16 && len == 0) {
+    biasStore emptyStore;
+    writeBiases(&icm, &emptyStore);
+    saveBiasStore(&emptyStore);
+
+    return;
+  }
+
+  if (id == 0x10 && len == 0) {
+    biasStore store;
+    readBiases(&icm, &store);
+    saveBiasStore(&store);
+
+    return;
+  }
+
+  // Serial.printff("Unrecognized packet 0x%x!\n", id);
   hexdump(data, len);
 }
 
-void onPID(double output) { servo.write(SERVO_PIN, SERVO_MIDDLE - output); }
+void writeServo(double output) {
+  servo.write(SERVO_PIN, SERVO_MIDDLE - output);
+}
 
 void handleAnchoring() {
-  if (anchoring)
-    startPidTask(yaw);
-  else {
+  if (anchoring) {
+    startPidTask();
+    ws.binaryAll(buildYawAnchorPacket(&ws, yaw));
+  } else {
     stopPidTask();
     servo.write(SERVO_PIN, SERVO_MIDDLE);
   }
 
-  Serial.printf("Anchoring: %s\n", anchoring ? "on" : "off");
+  // Serial.printff("Anchoring: %s\n", anchoring ? "on" : "off");
 }
 
 void setup() {
-  Serial.begin(115200);
-  delay(1800);
+  writeServo(0);
+  // Serial.begin(115200);
+  // delay(1800);
 
-  setupDMP();
+  setupIMU();
   setupWS([](AsyncWebSocket *server, AsyncWebSocketClient *client,
              const uint8_t *data, size_t len) {
     auto id = data[0];
@@ -123,27 +131,47 @@ void setup() {
 
   if (!loadCoefficients()) {
     pid.setKp(1);
+    pid.setKi(0);
+    pid.setKd(0);
     saveCoefficients();
   }
-  pid.outMax = SERVO_MAX_DIFF;
-  pid.outMin = -SERVO_MAX_DIFF;
-  pid.setpoint = 0;
 
-  setupPID(10, [] { return yaw; }, onPID);
+  setupPID(25, &yaw, writeServo);
 
-  Serial.println("\nDone initialization\n");
+  // Serial.printfln("\nDone initialization\n");
 }
 
+uint32_t lastUpdateSentTime = millis();
+
 void loop() {
-  tickDMP();
-  button.tick();
+  tickIMU();
+  // button.tick();
 
-  if (button.click()) {
-    anchoring = !anchoring;
+  // if (button.click()) {
+  //   anchoring = !anchoring;
 
-    handleAnchoring();
-    sendAnchoringPacket();
+  //   handleAnchoring();
+  //   ws.binaryAll(buildAnchoringPacket(&ws, &anchoring));
+  // }
+
+  if (millis() - lastUpdateSentTime > 100) {
+    lastUpdateSentTime = millis();
+
+    if (!calibrating) {
+      ws.binaryAll(buildRotationPacket(&ws, yaw));
+    } else {
+      biasStore store;
+      readBiases(&icm, &store);
+
+      ws.binaryAll(buildBiasesPacket(&ws, &store));
+    }
   }
+
+  // if (millis() - lastPingTime > 1000) {
+  //   anchoring = false;
+  //   handleAnchoring();
+  //   servo.write(MOTOR_PIN, 0);
+  // }
 
   tickWS();
 }

@@ -1,8 +1,8 @@
 #include <Arduino.h>
-#include <EEPROM.h>
 #include <ICM_20948.h>
 
 extern float yaw;
+extern ICM_20948_I2C icm;
 
-int setupDMP();
-void tickDMP();
+bool setupIMU();
+void tickIMU();

@@ -1,0 +1,3 @@
+
+#define SERVO_MIDDLE 96.5
+#define SERVO_MAX_DIFF 50
