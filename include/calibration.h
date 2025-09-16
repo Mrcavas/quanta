@@ -1,27 +1,26 @@
 #include <Arduino.h>
-#include <EEPROM.h>
-#include <ICM_20948.h>
+#include <Preferences.h>
 
-struct biasStore {
-  int32_t header;
-  int32_t biasGyroX;
-  int32_t biasGyroY;
-  int32_t biasGyroZ;
-  int32_t biasAccelX;
-  int32_t biasAccelY;
-  int32_t biasAccelZ;
-  int32_t biasCPassX;
-  int32_t biasCPassY;
-  int32_t biasCPassZ;
-  int32_t sum;
+#ifndef calibration_h
+#define calibration_h
+
+struct CalibrationStore {
+  float gyroX;
+  float gyroY;
+  float gyroZ;
+  float accelX;
+  float accelY;
+  float accelZ;
+  float magX;
+  float magY;
+  float magZ;
+  float magScale[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
 };
 
-void updateBiasStoreSum(biasStore *store);
-bool isBiasStoreValid(biasStore *store);
+extern Preferences calPrefs;
+extern CalibrationStore calibration;
 
-bool readBiases(ICM_20948_I2C *icm, biasStore *store);
-bool writeBiases(ICM_20948_I2C *icm, biasStore *store);
+void saveBiasStore(CalibrationStore *store);
+bool setupBiasesStorage();
 
-bool saveBiasStore(biasStore *store);
-
-bool setupBiasesStorage(ICM_20948_I2C *icm);
+#endif

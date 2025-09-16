@@ -1,104 +1,55 @@
 #include "calibration.h"
 #include <Arduino.h>
-#include <EEPROM.h>
-#include <ICM_20948.h>
+#include <Preferences.h>
 
-struct biasStore {
-  int32_t header = 0x42;
-  int32_t biasGyroX = 0;
-  int32_t biasGyroY = 0;
-  int32_t biasGyroZ = 0;
-  int32_t biasAccelX = 0;
-  int32_t biasAccelY = 0;
-  int32_t biasAccelZ = 0;
-  int32_t biasCPassX = 0;
-  int32_t biasCPassY = 0;
-  int32_t biasCPassZ = 0;
-  int32_t sum = 0;
-};
+Preferences calPrefs;
+CalibrationStore calibration;
 
-void updateBiasStoreSum(biasStore *store) {
-  int32_t sum = store->header;
-  sum += store->biasGyroX;
-  sum += store->biasGyroY;
-  sum += store->biasGyroZ;
-  sum += store->biasAccelX;
-  sum += store->biasAccelY;
-  sum += store->biasAccelZ;
-  sum += store->biasCPassX;
-  sum += store->biasCPassY;
-  sum += store->biasCPassZ;
-  store->sum = sum;
+void saveBiasStore(CalibrationStore *store) {
+  calPrefs.putFloat("gyroX", store->gyroX);
+  calPrefs.putFloat("gyroY", store->gyroY);
+  calPrefs.putFloat("gyroZ", store->gyroZ);
+  calPrefs.putFloat("accelX", store->accelX);
+  calPrefs.putFloat("accelY", store->accelY);
+  calPrefs.putFloat("accelZ", store->accelZ);
+  calPrefs.putFloat("magX", store->magX);
+  calPrefs.putFloat("magY", store->magY);
+  calPrefs.putFloat("magZ", store->magZ);
+  calPrefs.putFloat("magScale0", store->magScale[0][0]);
+  calPrefs.putFloat("magScale1", store->magScale[0][1]);
+  calPrefs.putFloat("magScale2", store->magScale[0][2]);
+  calPrefs.putFloat("magScale3", store->magScale[1][0]);
+  calPrefs.putFloat("magScale4", store->magScale[1][1]);
+  calPrefs.putFloat("magScale5", store->magScale[1][2]);
+  calPrefs.putFloat("magScale6", store->magScale[2][0]);
+  calPrefs.putFloat("magScale7", store->magScale[2][1]);
+  calPrefs.putFloat("magScale8", store->magScale[2][2]);
 }
 
-bool isBiasStoreValid(biasStore *store) {
-  int32_t sum = store->header;
-
-  if (sum != 0x42)
+bool setupBiasesStorage() {
+  if (!calPrefs.begin("calibration", false))
     return false;
 
-  sum += store->biasGyroX;
-  sum += store->biasGyroY;
-  sum += store->biasGyroZ;
-  sum += store->biasAccelX;
-  sum += store->biasAccelY;
-  sum += store->biasAccelZ;
-  sum += store->biasCPassX;
-  sum += store->biasCPassY;
-  sum += store->biasCPassZ;
-
-  return (store->sum == sum);
-}
-
-bool readBiases(ICM_20948_I2C *icm, biasStore *store) {
-  bool success = (icm->getBiasGyroX(&store->biasGyroX) == ICM_20948_Stat_Ok);
-  success &= (icm->getBiasGyroY(&store->biasGyroY) == ICM_20948_Stat_Ok);
-  success &= (icm->getBiasGyroZ(&store->biasGyroZ) == ICM_20948_Stat_Ok);
-  success &= (icm->getBiasAccelX(&store->biasAccelX) == ICM_20948_Stat_Ok);
-  success &= (icm->getBiasAccelY(&store->biasAccelY) == ICM_20948_Stat_Ok);
-  success &= (icm->getBiasAccelZ(&store->biasAccelZ) == ICM_20948_Stat_Ok);
-  success &= (icm->getBiasCPassX(&store->biasCPassX) == ICM_20948_Stat_Ok);
-  success &= (icm->getBiasCPassY(&store->biasCPassY) == ICM_20948_Stat_Ok);
-  success &= (icm->getBiasCPassZ(&store->biasCPassZ) == ICM_20948_Stat_Ok);
-
-  updateBiasStoreSum(store);
-
-  return success;
-}
-
-bool writeBiases(ICM_20948_I2C *icm, biasStore *store) {
-  bool success = (icm->setBiasGyroX(store->biasGyroX) == ICM_20948_Stat_Ok);
-  success &= (icm->setBiasGyroY(store->biasGyroY) == ICM_20948_Stat_Ok);
-  success &= (icm->setBiasGyroZ(store->biasGyroZ) == ICM_20948_Stat_Ok);
-  success &= (icm->setBiasAccelX(store->biasAccelX) == ICM_20948_Stat_Ok);
-  success &= (icm->setBiasAccelY(store->biasAccelY) == ICM_20948_Stat_Ok);
-  success &= (icm->setBiasAccelZ(store->biasAccelZ) == ICM_20948_Stat_Ok);
-  success &= (icm->setBiasCPassX(store->biasCPassX) == ICM_20948_Stat_Ok);
-  success &= (icm->setBiasCPassY(store->biasCPassY) == ICM_20948_Stat_Ok);
-  success &= (icm->setBiasCPassZ(store->biasCPassZ) == ICM_20948_Stat_Ok);
-
-  return success;
-}
-
-bool saveBiasStore(biasStore *store) {
-  EEPROM.put(0, store);
-  EEPROM.commit();
-
-  biasStore readStore;
-  EEPROM.get(0, readStore);
-
-  return isBiasStoreValid(&readStore);
-}
-
-bool setupBiasesStorage(ICM_20948_I2C *icm) {
-  if (!EEPROM.begin(128))
-    return false;
-
-  biasStore store;
-  EEPROM.get(0, store);
-
-  if (isBiasStoreValid(&store))
-    writeBiases(icm, &store);
+  if (calPrefs.isKey("gyroX")) {
+    calibration.gyroX = calPrefs.getFloat("gyroX");
+    calibration.gyroY = calPrefs.getFloat("gyroY");
+    calibration.gyroZ = calPrefs.getFloat("gyroZ");
+    calibration.accelX = calPrefs.getFloat("accelX");
+    calibration.accelY = calPrefs.getFloat("accelY");
+    calibration.accelZ = calPrefs.getFloat("accelZ");
+    calibration.magX = calPrefs.getFloat("magX");
+    calibration.magY = calPrefs.getFloat("magY");
+    calibration.magZ = calPrefs.getFloat("magZ");
+    calibration.magScale[0][0] = calPrefs.getFloat("magScale0");
+    calibration.magScale[0][1] = calPrefs.getFloat("magScale1");
+    calibration.magScale[0][2] = calPrefs.getFloat("magScale2");
+    calibration.magScale[1][0] = calPrefs.getFloat("magScale3");
+    calibration.magScale[1][1] = calPrefs.getFloat("magScale4");
+    calibration.magScale[1][2] = calPrefs.getFloat("magScale5");
+    calibration.magScale[2][0] = calPrefs.getFloat("magScale6");
+    calibration.magScale[2][1] = calPrefs.getFloat("magScale7");
+    calibration.magScale[2][2] = calPrefs.getFloat("magScale8");
+  }
 
   return true;
 }

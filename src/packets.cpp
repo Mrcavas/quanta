@@ -1,14 +1,23 @@
 #include "packets.h"
-#include "calibration.h"
+
+WS_BUFFER *buildMessagePacket(AsyncWebSocket *ws, String str) {
+  auto buf = ws->makeBuffer(1 + str.length());
+  uint8_t *p = buf->get();
+
+  p[0] = 0xbb;
+  memcpy(p + 1, str.c_str(), str.length());
+
+  return buf;
+}
 
 WS_BUFFER *buildInitPacket(AsyncWebSocket *ws, float kp, float ki, float kd) {
-  auto buf = ws->makeBuffer(1 + 3 * sizeof(float));
+  auto buf = ws->makeBuffer(1 + 3 * 4);
   uint8_t *p = buf->get();
 
   p[0] = 0x01;
-  memcpy(p + 1, &kp, sizeof(float));
-  memcpy(p + 1 + sizeof(float), &ki, sizeof(float));
-  memcpy(p + 1 + 2 * sizeof(float), &kd, sizeof(float));
+  memcpy(p + 1, &kp, 4);
+  memcpy(p + 1 + 4, &ki, 4);
+  memcpy(p + 1 + 2 * 4, &kd, 4);
 
   return buf;
 }
@@ -43,20 +52,63 @@ WS_BUFFER *buildYawAnchorPacket(AsyncWebSocket *ws, float yaw) {
   return buf;
 }
 
-WS_BUFFER *buildBiasesPacket(AsyncWebSocket *ws, biasStore *store) {
-  auto buf = ws->makeBuffer(1 + 4 * 9);
+WS_BUFFER *buildMagPointPacket(AsyncWebSocket *ws, float mx, float my,
+                               float mz) {
+  auto buf = ws->makeBuffer(1 + 4 * 3);
   uint8_t *p = buf->get();
 
-  p[0] = 0x1c;
-  memcpy(p + 1, &store->biasAccelX, 4);
-  memcpy(p + 5, &store->biasAccelY, 4);
-  memcpy(p + 9, &store->biasAccelZ, 4);
-  memcpy(p + 13, &store->biasGyroX, 4);
-  memcpy(p + 17, &store->biasGyroY, 4);
-  memcpy(p + 21, &store->biasGyroZ, 4);
-  memcpy(p + 25, &store->biasCPassX, 4);
-  memcpy(p + 29, &store->biasCPassY, 4);
-  memcpy(p + 33, &store->biasCPassZ, 4);
+  p[0] = 0xc0;
+  memcpy(p + 1, &mx, 4);
+  memcpy(p + 5, &my, 4);
+  memcpy(p + 9, &mz, 4);
+
+  return buf;
+}
+
+WS_BUFFER *buildGyroCalibrationProgressPacket(AsyncWebSocket *ws,
+                                              float percentage) {
+  auto buf = ws->makeBuffer(1 + 4);
+  uint8_t *p = buf->get();
+
+  p[0] = 0xc2;
+  memcpy(p + 1, &percentage, 4);
+
+  return buf;
+}
+
+WS_BUFFER *buildAccelCalibrationProgressPacket(AsyncWebSocket *ws, uint8_t axis,
+                                               float percentage) {
+  auto buf = ws->makeBuffer(1 + 4 + 1);
+  uint8_t *p = buf->get();
+
+  p[0] = 0xc6;
+  memcpy(p + 1, &percentage, 4);
+  memcpy(p + 5, &axis, 1);
+
+  return buf;
+}
+
+WS_BUFFER *buildAccelCalibrationDataPacket(AsyncWebSocket *ws, uint8_t axis,
+                                           float ax, float ay, float az) {
+  auto buf = ws->makeBuffer(1 + 4 * 3 + 1);
+  uint8_t *p = buf->get();
+
+  p[0] = 0xc7;
+  memcpy(p + 1, &axis, 1);
+  memcpy(p + 2, &ax, 4);
+  memcpy(p + 6, &ay, 4);
+  memcpy(p + 10, &az, 4);
+
+  return buf;
+}
+
+WS_BUFFER *buildCalibrationDataPacket(AsyncWebSocket *ws,
+                                      CalibrationStore *cal) {
+  auto buf = ws->makeBuffer(1 + sizeof(CalibrationStore));
+  uint8_t *p = buf->get();
+
+  p[0] = 0xa0;
+  memcpy(p + 1, cal, sizeof(CalibrationStore));
 
   return buf;
 }

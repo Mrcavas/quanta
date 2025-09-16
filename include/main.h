@@ -1,3 +1,5 @@
 
+#define WS_MAX_QUEUED_MESSAGES 1024
+
 #define SERVO_MIDDLE 96.5
 #define SERVO_MAX_DIFF 50

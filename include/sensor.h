@@ -1,8 +1,16 @@
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include <Arduino.h>
-#include <ICM_20948.h>
 
-extern float yaw;
-extern ICM_20948_I2C icm;
+#define SAMPLE_RATE 100
 
-bool setupIMU();
-void tickIMU();
+struct RawICUData {
+  float ax, ay, az;
+  float gx, gy, gz;
+  float mx, my, mz;
+};
+
+typedef void (*IMUCallback)(float yaw, RawICUData raw);
+
+bool setupIMU(IMUCallback pidCallback);
+float getYaw();
