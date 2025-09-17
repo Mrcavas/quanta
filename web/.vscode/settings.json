@@ -8,5 +8,10 @@
     "**/*.meta": true,
     "**/*.svg": true
   },
-  "hide-files.files": []
+  "hide-files.files": [],
+  "files.associations": {
+    "Tokens": "raw",
+    "*.css": "tailwindcss",
+    "imuread.h": "c"
+  }
 }
