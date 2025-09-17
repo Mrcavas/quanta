@@ -101,6 +101,7 @@ export default function CalibrationPage(props: { ws: WebSocket; message: () => A
               let points = collectedPoints()
               points = removeOutliersIQR(points)
               const biasData = calibrateMagnetometer(points)
+              console.log(biasData)
 
               if (!biasData) {
                 props.ws.send(buildMagCalibrationStopPacket())

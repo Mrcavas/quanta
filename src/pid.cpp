@@ -15,11 +15,7 @@ void setupPID() {
 }
 
 float tickPID(float yawAnchor, float yaw) {
-  float a = fmod(yaw - yawAnchor, 360.0f);
-  if (a > 180.0f)
-    a -= 360.0f;
-  if (a < -180.0f)
-    a += 360.0f;
+  float a = fmodf(yaw - yawAnchor + 540.0f, 360.0f) - 180.0f;
 
   return pid.compute(a);
 }

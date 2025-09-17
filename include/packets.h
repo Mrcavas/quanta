@@ -1,30 +1,23 @@
 #include "calibration.h"
+#include "ws.h"
 #include <Arduino.h>
-#include <ESPAsyncWebServer.h>
 
-#define WS_BUFFER AsyncWebSocketMessageBuffer
+void sendMessagePacket(String str);
 
-WS_BUFFER *buildMessagePacket(AsyncWebSocket *ws, String str);
+void sendInitPacket(float kp, float ki, float kd);
 
-WS_BUFFER *buildInitPacket(AsyncWebSocket *ws, float kp, float ki, float kd);
+void sendAnchoringPacket(bool *anchoring);
 
-WS_BUFFER *buildAnchoringPacket(AsyncWebSocket *ws, bool *anchoring);
+void sendRotationPacket(float yaw);
 
-WS_BUFFER *buildRotationPacket(AsyncWebSocket *ws, float yaw);
+void sendYawAnchorPacket(float yaw);
 
-WS_BUFFER *buildYawAnchorPacket(AsyncWebSocket *ws, float yaw);
+void sendMagPointPacket(float mx, float my, float mz);
 
-WS_BUFFER *buildMagPointPacket(AsyncWebSocket *ws, float mx, float my,
-                               float mz);
+void sendGyroCalibrationProgressPacket(float percentage);
 
-WS_BUFFER *buildGyroCalibrationProgressPacket(AsyncWebSocket *ws,
-                                              float percentage);
+void sendAccelCalibrationProgressPacket(uint8_t axis, float percentage);
 
-WS_BUFFER *buildAccelCalibrationProgressPacket(AsyncWebSocket *ws, uint8_t axis,
-                                               float percentage);
+void sendAccelCalibrationDataPacket(uint8_t axis, float ax, float ay, float az);
 
-WS_BUFFER *buildAccelCalibrationDataPacket(AsyncWebSocket *ws, uint8_t axis,
-                                           float ax, float ay, float az);
-
-WS_BUFFER *buildCalibrationDataPacket(AsyncWebSocket *ws,
-                                      CalibrationStore *cal);
+void sendCalibrationDataPacket(CalibrationStore *cal);

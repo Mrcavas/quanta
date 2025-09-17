@@ -1,3 +1,5 @@
+import * as numeric from "numeric"
+
 export type Point = [number, number, number]
 
 export function calibrateAccelerometer(points: Point[]) {
@@ -56,11 +58,13 @@ export function removeOutliersIQR(points: Point[]) {
 
 export type MagCalibrationData = {
   offset: [number, number, number]
-  matrix: number[][] // 3x3
+  matrix: number[][]
 }
 
 export function calibrateMagnetometer(points: [number, number, number][]): MagCalibrationData | null {
   const fit = fitEllipsoid(points)
+  console.log(fit)
+
   if (!fit) {
     console.log("ellipsoid fit returned null")
     return null
@@ -68,20 +72,15 @@ export function calibrateMagnetometer(points: [number, number, number][]): MagCa
 
   const { center, radii, rotation: R } = fit
 
+  // Среднее геометрическое радиусов
   const g = Math.cbrt(radii[0] * radii[1] * radii[2])
   const scale = [g / radii[0], g / radii[1], g / radii[2]]
 
-  // Build calibration matrix: M = R diag(scale) R^T
-  const M = makeZero(3, 3)
-  for (let i = 0; i < 3; i++) {
-    for (let j = 0; j < 3; j++) {
-      let sum = 0
-      for (let k = 0; k < 3; k++) {
-        sum += R[i][k] * scale[k] * R[j][k]
-      }
-      M[i][j] = sum
-    }
-  }
+  // Диагональная матрица масштабирования
+  const S = numeric.diag(scale)
+
+  // M = R * S * R^T
+  const M = numeric.dot(R, numeric.dot(S, numeric.transpose(R))) as number[][]
 
   return {
     offset: [center[0], center[1], center[2]],
@@ -110,265 +109,84 @@ type EllipsoidFitResult = {
 }
 
 function fitEllipsoid(points: [number, number, number][]): EllipsoidFitResult | null {
-  if (points.length < 9) {
-    console.log("not enough points")
-    return null
+  window.numeric = numeric
+
+  if (points.length < 9) return null
+
+  // Матрица D: каждая строка = одна точка
+  const D = points.map(([x, y, z]) => [x * x, y * y, z * z, x * y, x * z, y * z, x, y, z, 1])
+
+  const DT = numeric.transpose(D)
+  const S = numeric.dot(DT, D) as number[][] // (10x10)
+
+  // Собственные значения/векторы
+  const eigRes = numeric.eig(S)
+  const eigenvalues = eigRes.lambda.x as number[]
+  const eigenvectors = eigRes.E.x as number[][]
+
+  // Берём вектор при минимальном собственном значении
+  let minIndex = 0
+  for (let i = 1; i < eigenvalues.length; i++) {
+    if (eigenvalues[i] < eigenvalues[minIndex]) minIndex = i
   }
 
-  // --- Initial guess from raw data ---
-  const mean: [number, number, number] = [
-    points.reduce((s, p) => s + p[0], 0) / points.length,
-    points.reduce((s, p) => s + p[1], 0) / points.length,
-    points.reduce((s, p) => s + p[2], 0) / points.length,
+  const coeffs = eigenvectors.map(row => row[minIndex])
+  const [A, B, C, Dxy, Exz, Fyz, G, H, I, J] = coeffs
+
+  // Матрица квадратичной формы Q
+  const Q = [
+    [A, Dxy / 2, Exz / 2, G / 2],
+    [Dxy / 2, B, Fyz / 2, H / 2],
+    [Exz / 2, Fyz / 2, C, I / 2],
+    [G / 2, H / 2, I / 2, J],
   ]
-  const varx = Math.sqrt(points.reduce((s, p) => s + (p[0] - mean[0]) ** 2, 0) / points.length)
-  const vary = Math.sqrt(points.reduce((s, p) => s + (p[1] - mean[1]) ** 2, 0) / points.length)
-  const varz = Math.sqrt(points.reduce((s, p) => s + (p[2] - mean[2]) ** 2, 0) / points.length)
 
-  // parameters: [cx, cy, cz, rx, ry, rz]
-  let params = [mean[0], mean[1], mean[2], varx, vary, varz]
+  // Центр: -Q33⁻¹ * q34
+  const Q33 = Q.slice(0, 3).map(r => r.slice(0, 3))
+  const q34 = Q.slice(0, 3).map(r => r[3])
+  const center = numeric.neg(numeric.solve(Q33, q34)) as [number, number, number]
 
-  // --- LM optimization ---
-  const maxIter = 100
-  const lambda0 = 1e-3
-  let lambda = lambda0
+  // Сдвигаем в центр
+  const T = numeric.identity(4)
+  T[3][0] = center[0]
+  T[3][1] = center[1]
+  T[3][2] = center[2]
 
-  function residuals(p: number[]): number[] {
-    const [cx, cy, cz, rx, ry, rz] = p
-    return points.map(([x, y, z]) => {
-      const dx = (x - cx) / rx
-      const dy = (y - cy) / ry
-      const dz = (z - cz) / rz
-      return dx * dx + dy * dy + dz * dz - 1
-    })
+  const Qt = numeric.dot(numeric.transpose(T), numeric.dot(Q, T)) as number[][]
+
+  const M = Qt.slice(0, 3).map(r => r.slice(0, 3))
+  const k = -Qt[3][3]
+
+  // Собственные значения/векторы нормализованной матрицы
+  const eigM = numeric.eig(numeric.div(M, k))
+
+  // Проверяем, что вернулось
+  let evals: number[]
+  if (Array.isArray(eigM.lambda)) {
+    // Вещественные
+    evals = eigM.lambda as number[]
+  } else {
+    // Комплексные
+    const lx = eigM.lambda.x as number[]
+    const ly = eigM.lambda.y as number[]
+    evals = lx.map((re, i) => (ly && Math.abs(ly[i]) > 1e-6 ? NaN : re))
   }
 
-  for (let iter = 0; iter < maxIter; iter++) {
-    const res = residuals(params)
-    const cost = res.reduce((s, r) => s + r * r, 0)
+  const V = eigM.E.x as number[][]
 
-    // Compute Jacobian
-    const J = points.map(([x, y, z]) => {
-      const [cx, cy, cz, rx, ry, rz] = params
-      const dx = x - cx
-      const dy = y - cy
-      const dz = z - cz
-      return [
-        (-2 * dx) / (rx * rx), // d/dcx
-        (-2 * dy) / (ry * ry), // d/dcy
-        (-2 * dz) / (rz * rz), // d/dcz
-        (-2 * dx * dx) / (rx * rx * rx), // d/drx
-        (-2 * dy * dy) / (ry * ry * ry), // d/dry
-        (-2 * dz * dz) / (rz * rz * rz), // d/drz
-      ]
-    })
+  // Делаем радиусы безопасными
+  const safeEvals = evals.map(l => {
+    let val = l
+    if (!isFinite(val) || val <= 0) val = 1e-12
+    return val
+  })
 
-    // Build normal equations JᵀJ Δ = -Jᵀr
-    const JTJ = makeZero(6, 6)
-    const JTr = new Array(6).fill(0)
-    for (let i = 0; i < points.length; i++) {
-      const row = J[i]
-      for (let a = 0; a < 6; a++) {
-        JTr[a] += row[a] * res[i]
-        for (let b = a; b < 6; b++) JTJ[a][b] += row[a] * row[b]
-      }
-    }
-    for (let a = 0; a < 6; a++) for (let b = 0; b < a; b++) JTJ[a][b] = JTJ[b][a]
-
-    // Levenberg–Marquardt damping
-    for (let a = 0; a < 6; a++) JTJ[a][a] *= 1 + lambda
-
-    const delta = solveSPD(JTJ, new Float64Array(JTr.map(v => -v)))
-    if (!delta) break
-
-    const newParams = params.map((v, i) => v + delta[i])
-    if (newParams[3] <= 0 || newParams[4] <= 0 || newParams[5] <= 0) {
-      lambda *= 10
-      continue
-    }
-
-    const newRes = residuals(newParams)
-    const newCost = newRes.reduce((s, r) => s + r * r, 0)
-
-    if (newCost < cost) {
-      params = newParams
-      lambda *= 0.7
-      if (Math.abs(cost - newCost) < 1e-9) break
-    } else {
-      lambda *= 2
-    }
-  }
-
-  // Extract final parameters
-  const [cx, cy, cz, rx, ry, rz] = params
-  const center: [number, number, number] = [cx, cy, cz]
-  const radii: [number, number, number] = [rx, ry, rz]
-
-  // No rotation in this simplified fit (assumes axes-aligned ellipsoid)
-  const R = [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-  ]
+  const radii = safeEvals.map(l => Math.sqrt(1 / l)) as [number, number, number]
 
   return {
     center,
     radii,
-    rotation: R,
-    algebraic: {
-      A: 1 / (rx * rx),
-      B: 1 / (ry * ry),
-      C: 1 / (rz * rz),
-      D: 0,
-      E: 0,
-      F: 0,
-      G: (-2 * cx) / (rx * rx),
-      H: (-2 * cy) / (ry * ry),
-      I: (-2 * cz) / (rz * rz),
-      J: (cx * cx) / (rx * rx) + (cy * cy) / (ry * ry) + (cz * cz) / (rz * rz) - 1,
-    },
+    rotation: V,
+    algebraic: { A, B, C, D: Dxy, E: Exz, F: Fyz, G, H, I, J },
   }
-}
-
-/* ------------------ Linear algebra helpers ------------------ */
-
-function makeZero(r: number, c: number): number[][] {
-  return Array.from({ length: r }, () => new Array(c).fill(0))
-}
-
-function dot(a: number[], b: number[]): number {
-  return a.reduce((s, v, i) => s + v * b[i], 0)
-}
-
-function mulMatVec(M: number[][], v: number[]): number[] {
-  return M.map(row => dot(row, v))
-}
-
-function negate(v: number[]): number[] {
-  return v.map(x => -x)
-}
-
-function solveSPD(A: number[][], b: Float64Array): Float64Array | null {
-  const n = A.length
-  const L = makeZero(n, n)
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j <= i; j++) {
-      let sum = A[i][j]
-      for (let k = 0; k < j; k++) sum -= L[i][k] * L[j][k]
-      if (i === j) {
-        if (!(sum > 1e-18)) return null
-        L[i][i] = Math.sqrt(sum)
-      } else {
-        L[i][j] = sum / L[j][j]
-      }
-    }
-  }
-  const y = new Float64Array(n)
-  for (let i = 0; i < n; i++) {
-    let sum = b[i]
-    for (let k = 0; k < i; k++) sum -= L[i][k] * y[k]
-    y[i] = sum / L[i][i]
-  }
-  const x = new Float64Array(n)
-  for (let i = n - 1; i >= 0; i--) {
-    let sum = y[i]
-    for (let k = i + 1; k < n; k++) sum -= L[k][i] * x[k]
-    x[i] = sum / L[i][i]
-  }
-  return x
-}
-
-function invSym3(M: number[][]): number[][] | null {
-  const a = M[0][0],
-    b = M[0][1],
-    c = M[0][2]
-  const d = M[1][1],
-    e = M[1][2]
-  const f = M[2][2]
-  const det = a * (d * f - e * e) - b * (b * f - c * e) + c * (b * e - c * d)
-  if (Math.abs(det) < 1e-18) return null
-  const invDet = 1 / det
-  const A11 = d * f - e * e
-  const A12 = -(b * f - c * e)
-  const A13 = b * e - c * d
-  const A22 = a * f - c * c
-  const A23 = -(a * e - b * c)
-  const A33 = a * d - b * b
-  return [
-    [A11 * invDet, A12 * invDet, A13 * invDet],
-    [A12 * invDet, A22 * invDet, A23 * invDet],
-    [A13 * invDet, A23 * invDet, A33 * invDet],
-  ]
-}
-
-function det3(M: number[][]): number {
-  return (
-    M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1]) -
-    M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0]) +
-    M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0])
-  )
-}
-
-function isPD(M: number[][]): boolean {
-  const a = M[0][0]
-  if (!(a > 0)) return false
-  const det2 = a * M[1][1] - M[0][1] * M[1][0]
-  if (!(det2 > 0)) return false
-  return det3(M) > 0
-}
-
-function eigSym3(M: number[][]): { evals: number[]; evecs: number[][] } {
-  let A = [
-    [M[0][0], M[0][1], M[0][2]],
-    [M[1][0], M[1][1], M[1][2]],
-    [M[2][0], M[2][1], M[2][2]],
-  ]
-  let V = [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-  ]
-  const maxIter = 50
-  for (let it = 0; it < maxIter; it++) {
-    let p = 0,
-      q = 1
-    let max = Math.abs(A[0][1])
-    if (Math.abs(A[0][2]) > max) {
-      max = Math.abs(A[0][2])
-      p = 0
-      q = 2
-    }
-    if (Math.abs(A[1][2]) > max) {
-      max = Math.abs(A[1][2])
-      p = 1
-      q = 2
-    }
-    if (max < 1e-15) break
-    const app = A[p][p],
-      aqq = A[q][q],
-      apq = A[p][q]
-    const phi = 0.5 * Math.atan2(2 * apq, aqq - app)
-    const c = Math.cos(phi),
-      s = Math.sin(phi)
-    for (let k = 0; k < 3; k++) {
-      const aip = A[p][k],
-        aiq = A[q][k]
-      A[p][k] = c * aip - s * aiq
-      A[q][k] = s * aip + c * aiq
-    }
-    for (let k = 0; k < 3; k++) {
-      const kip = A[k][p],
-        kiq = A[k][q]
-      A[k][p] = c * kip - s * kiq
-      A[k][q] = s * kip + c * kiq
-    }
-    A[p][q] = A[q][p] = 0
-    for (let k = 0; k < 3; k++) {
-      const vip = V[k][p],
-        viq = V[k][q]
-      V[k][p] = c * vip - s * viq
-      V[k][q] = s * vip + c * viq
-    }
-  }
-  return { evals: [A[0][0], A[1][1], A[2][2]], evecs: V }
 }

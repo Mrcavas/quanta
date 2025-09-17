@@ -7,7 +7,7 @@ import { buildInitPacket, buildPingPacket, getPacketData } from "./packets"
 import createPersistent from "solid-persistent"
 
 export default function App() {
-  const ws = createWS(`ws://10.65.248.73/ws`)
+  const ws = createWS(`ws://10.56.74.73/ws`)
   // const ws = createWS(`ws://${new URL(window.location.href).host}/ws`)
   ws.binaryType = "arraybuffer"
   const stateIndex = createWSState(ws)

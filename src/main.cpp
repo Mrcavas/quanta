@@ -37,10 +37,14 @@ double gyroSum[3] = {0, 0, 0};
 uint16_t sampleIndex = 0;
 uint32_t lastPingTime;
 uint32_t lastUpdateSentTime;
+bool imuInitialized;
 
 void handleAnchoring();
 
-void writeServo(float output) { servo.write(SERVO_PIN, SERVO_MIDDLE - output); }
+void writeServo(float output) {
+  servo.write(SERVO_PIN, SERVO_MIDDLE - fmaxf(-SERVO_MAX_DIFF,
+                                              fminf(SERVO_MAX_DIFF, output)));
+}
 
 void handlePacket(uint8_t id, const uint8_t *data, size_t len) {
   if (id == 0x0c && len == 8) {
@@ -56,6 +60,8 @@ void handlePacket(uint8_t id, const uint8_t *data, size_t len) {
   if (id == 0x0a && len == 1) {
     memcpy(&anchoring, data, sizeof(bool));
     handleAnchoring();
+    sendMessagePacket(
+        strprintf("IMU is %sinitialized", imuInitialized ? "" : "not "));
   }
 
   if ((id == 'p' || id == 'i' || id == 'd') && len == 4) {
@@ -73,9 +79,9 @@ void handlePacket(uint8_t id, const uint8_t *data, size_t len) {
   }
 
   if (id == 0x01 && len == 0) {
-    ws.binaryAll(buildInitPacket(&ws, pid.getKp(), pid.getKi(), pid.getKd()));
-    ws.binaryAll(buildAnchoringPacket(&ws, &anchoring));
-    ws.binaryAll(buildYawAnchorPacket(&ws, yawAnchor));
+    sendInitPacket(pid.getKp(), pid.getKi(), pid.getKd());
+    sendAnchoringPacket(&anchoring);
+    sendYawAnchorPacket(yawAnchor);
   }
 
   if (id == 0xff && len == 0) {
@@ -122,7 +128,7 @@ void handlePacket(uint8_t id, const uint8_t *data, size_t len) {
   }
 
   if (id == 0xa0 && len == 0) {
-    ws.binaryAll(buildCalibrationDataPacket(&ws, &calibration));
+    sendCalibrationDataPacket(&calibration);
   }
 
   if (id == 0xa1 && len == sizeof(CalibrationStore)) {
@@ -134,12 +140,14 @@ void handlePacket(uint8_t id, const uint8_t *data, size_t len) {
 void handleAnchoring() {
   if (anchoring) {
     yawAnchor = getYaw();
-    ws.binaryAll(buildYawAnchorPacket(&ws, yawAnchor));
+    sendYawAnchorPacket(yawAnchor);
   } else {
     yawAnchor = 0.0f;
-    servo.write(SERVO_PIN, SERVO_MIDDLE);
+    writeServo(0);
   }
 }
+
+// int i = 0;
 
 void setup() {
   // Serial.begin(460800);
@@ -147,9 +155,20 @@ void setup() {
   writeServo(0);
 
   setupBiasesStorage();
-  setupIMU([](float yaw, RawICUData raw) {
+  imuInitialized = setupIMU([](float yaw, RawICUData raw) {
     if (anchoring) {
-      writeServo(tickPID(yawAnchor, yaw));
+      // i++;
+      float computed = tickPID(yawAnchor, yaw);
+
+      // if (i == SAMPLE_RATE) {
+      //   sendMessagePacket(strprintf(
+      //       "yawAnchor: %f\nyaw: %f\ndiff: %f\ncomputed: %f", yawAnchor, yaw,
+      //       fmodf(yaw - yawAnchor + 540.0f, 360.0f) - 180.0f, computed));
+
+      //   i = 0;
+      // }
+
+      writeServo(computed);
       return;
     }
 
@@ -164,8 +183,7 @@ void setup() {
       sampleIndex++;
 
       if (sampleIndex % 50 == 0) {
-        ws.binaryAll(buildGyroCalibrationProgressPacket(
-            &ws, (float)sampleIndex / 1000.0 * 100.0));
+        sendGyroCalibrationProgressPacket((float)sampleIndex / 1000.0 * 100.0);
       }
 
       if (sampleIndex == 1000) {
@@ -192,14 +210,14 @@ void setup() {
       sampleIndex++;
 
       if (sampleIndex % 25 == 0) {
-        ws.binaryAll(buildAccelCalibrationProgressPacket(
-            &ws, accelCalibrating, (float)sampleIndex / 500.0 * 100.0));
+        sendAccelCalibrationProgressPacket(accelCalibrating,
+                                           (float)sampleIndex / 500.0 * 100.0);
       }
 
       if (sampleIndex == 500) {
-        ws.binaryAll(buildAccelCalibrationDataPacket(
-            &ws, accelCalibrating, accelSum[0] / 500.0f, accelSum[1] / 500.0f,
-            accelSum[2] / 500.0f));
+        sendAccelCalibrationDataPacket(accelCalibrating, accelSum[0] / 500.0f,
+                                       accelSum[1] / 500.0f,
+                                       accelSum[2] / 500.0f);
 
         accelSum[0] = 0;
         accelSum[1] = 0;
@@ -234,16 +252,16 @@ void loop() {
     anchoring = !anchoring;
 
     handleAnchoring();
-    ws.binaryAll(buildAnchoringPacket(&ws, &anchoring));
+    sendAnchoringPacket(&anchoring);
   } */
 
-  if (millis() - lastUpdateSentTime > 200) {
+  if (millis() - lastUpdateSentTime > 180) {
     lastUpdateSentTime = millis();
 
     if (magCalibrating)
-      ws.binaryAll(buildMagPointPacket(&ws, mx, my, mz));
+      sendMagPointPacket(mx, my, mz);
     else
-      ws.binaryAll(buildRotationPacket(&ws, getYaw()));
+      sendRotationPacket(getYaw());
   }
 
   // if (millis() - lastPingTime > 2000) {
