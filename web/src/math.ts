@@ -51,142 +51,107 @@ export function removeOutliersIQR(points: Point[]) {
   return filteredPoints
 }
 
-/**
- * Least-squares ellipsoid fitting for magnetometer calibration.
- * Produces hard-iron offset and 3x3 soft-iron correction matrix.
- */
-
 export type MagCalibrationData = {
   offset: [number, number, number]
   matrix: number[][]
 }
 
 export function calibrateMagnetometer(points: [number, number, number][]): MagCalibrationData | null {
-  const fit = fitEllipsoid(points)
-  console.log(fit)
+  // @ts-expect-error
+  window.numeric = numeric
 
-  if (!fit) {
-    console.log("ellipsoid fit returned null")
+  if (points.length < 150) {
+    console.log("Not enough points for 10-element calibration")
     return null
   }
 
-  const { center, radii, rotation: R } = fit
+  // Find an initial offset to improve numerical stability
+  const offset = points[0]
 
-  // Среднее геометрическое радиусов
-  const g = Math.cbrt(radii[0] * radii[1] * radii[2])
-  const scale = [g / radii[0], g / radii[1], g / radii[2]]
+  const matA = numeric.rep([10, 10], 0) as number[][]
+  const vecA = new Array(9).fill(0)
 
-  // Диагональная матрица масштабирования
-  const S = numeric.diag(scale)
+  for (const p of points) {
+    const mx = p[0] - offset[0]
+    const my = p[1] - offset[1]
+    const mz = p[2] - offset[2]
 
-  // M = R * S * R^T
-  const M = numeric.dot(R, numeric.dot(S, numeric.transpose(R))) as number[][]
+    vecA[0] = mx * mx
+    vecA[1] = 2 * mx * my
+    vecA[2] = 2 * mx * mz
+    vecA[3] = my * my
+    vecA[4] = 2 * my * mz
+    vecA[5] = mz * mz
+    vecA[6] = mx
+    vecA[7] = my
+    vecA[8] = mz
 
-  return {
-    offset: [center[0], center[1], center[2]],
-    matrix: M,
+    for (let m = 0; m < 9; m++) {
+      matA[m][9] += vecA[m]
+      for (let n = m; n < 9; n++) {
+        matA[m][n] += vecA[m] * vecA[n]
+      }
+    }
   }
-}
 
-/* ------------------ Ellipsoid fitting core ------------------ */
+  matA[9][9] = points.length
 
-type EllipsoidFitResult = {
-  center: [number, number, number]
-  radii: [number, number, number]
-  rotation: number[][]
-  algebraic: {
-    A: number
-    B: number
-    C: number
-    D: number
-    E: number
-    F: number
-    G: number
-    H: number
-    I: number
-    J: number
+  for (let m = 1; m < 10; m++) {
+    for (let n = 0; n < m; n++) {
+      matA[m][n] = matA[n][m]
+    }
   }
-}
 
-function fitEllipsoid(points: [number, number, number][]): EllipsoidFitResult | null {
-  window.numeric = numeric
+  const eig = numeric.eig(matA)
+  const eigenvalues = (eig.lambda as any).x as number[]
+  const eigenvectors = (eig.E as any).x as number[][]
 
-  if (points.length < 9) return null
-
-  // Матрица D: каждая строка = одна точка
-  const D = points.map(([x, y, z]) => [x * x, y * y, z * z, x * y, x * z, y * z, x, y, z, 1])
-
-  const DT = numeric.transpose(D)
-  const S = numeric.dot(DT, D) as number[][] // (10x10)
-
-  // Собственные значения/векторы
-  const eigRes = numeric.eig(S)
-  const eigenvalues = eigRes.lambda.x as number[]
-  const eigenvectors = eigRes.E.x as number[][]
-
-  // Берём вектор при минимальном собственном значении
   let minIndex = 0
   for (let i = 1; i < eigenvalues.length; i++) {
-    if (eigenvalues[i] < eigenvalues[minIndex]) minIndex = i
+    if (eigenvalues[i] < eigenvalues[minIndex]) {
+      minIndex = i
+    }
   }
 
-  const coeffs = eigenvectors.map(row => row[minIndex])
-  const [A, B, C, Dxy, Exz, Fyz, G, H, I, J] = coeffs
+  const solution = eigenvectors.map(row => row[minIndex])
 
-  // Матрица квадратичной формы Q
-  const Q = [
-    [A, Dxy / 2, Exz / 2, G / 2],
-    [Dxy / 2, B, Fyz / 2, H / 2],
-    [Exz / 2, Fyz / 2, C, I / 2],
-    [G / 2, H / 2, I / 2, J],
+  const A = [
+    [solution[0], solution[1], solution[2]],
+    [solution[1], solution[3], solution[4]],
+    [solution[2], solution[4], solution[5]],
   ]
 
-  // Центр: -Q33⁻¹ * q34
-  const Q33 = Q.slice(0, 3).map(r => r.slice(0, 3))
-  const q34 = Q.slice(0, 3).map(r => r[3])
-  const center = numeric.neg(numeric.solve(Q33, q34)) as [number, number, number]
-
-  // Сдвигаем в центр
-  const T = numeric.identity(4)
-  T[3][0] = center[0]
-  T[3][1] = center[1]
-  T[3][2] = center[2]
-
-  const Qt = numeric.dot(numeric.transpose(T), numeric.dot(Q, T)) as number[][]
-
-  const M = Qt.slice(0, 3).map(r => r.slice(0, 3))
-  const k = -Qt[3][3]
-
-  // Собственные значения/векторы нормализованной матрицы
-  const eigM = numeric.eig(numeric.div(M, k))
-
-  // Проверяем, что вернулось
-  let evals: number[]
-  if (Array.isArray(eigM.lambda)) {
-    // Вещественные
-    evals = eigM.lambda as number[]
-  } else {
-    // Комплексные
-    const lx = eigM.lambda.x as number[]
-    const ly = eigM.lambda.y as number[]
-    evals = lx.map((re, i) => (ly && Math.abs(ly[i]) > 1e-6 ? NaN : re))
+  let det = numeric.det(A)
+  if (det < 0) {
+    numeric.mul(solution, -1, solution)
+    numeric.mul(A, -1, A)
+    det = -det
   }
 
-  const V = eigM.E.x as number[][]
+  const invA = numeric.inv(A)
 
-  // Делаем радиусы безопасными
-  const safeEvals = evals.map(l => {
-    let val = l
-    if (!isFinite(val) || val <= 0) val = 1e-12
-    return val
-  })
+  const v = [0, 0, 0]
+  for (let k = 0; k < 3; k++) {
+    for (let m = 0; m < 3; m++) {
+      v[k] += invA[k][m] * solution[m + 6]
+    }
+    v[k] *= -0.5
+  }
 
-  const radii = safeEvals.map(l => Math.sqrt(1 / l)) as [number, number, number]
+  const hardIron = [v[0] + offset[0], v[1] + offset[1], v[2] + offset[2]] as [number, number, number]
+
+  const normFactor = Math.pow(det, -1 / 3)
+  const normalizedA = numeric.mul(A, normFactor)
+
+  const eigA = numeric.eig(normalizedA)
+  const eigAVals = ((eigA.lambda as any).x as number[]).map(v => Math.sqrt(v))
+  const eigAVecs = (eigA.E as any).x as number[][]
+
+  const D = numeric.diag(eigAVals)
+  const softIron = numeric.dot(numeric.dot(eigAVecs, D), numeric.transpose(eigAVecs)) as number[][]
 
   return {
-    center,
-    radii,
-    rotation: V,
-    algebraic: { A, B, C, D: Dxy, E: Exz, F: Fyz, G, H, I, J },
+    offset: hardIron,
+    matrix: softIron,
   }
 }
