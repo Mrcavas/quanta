@@ -1,4 +1,4 @@
-import { Matrix, EigenvalueDecomposition } from "ml-matrix"
+import { Matrix, EigenvalueDecomposition, determinant, pseudoInverse } from "ml-matrix"
 
 export type Point = [number, number, number]
 
@@ -135,7 +135,8 @@ export function calibrateMagnetometer(points: Point[]): MagCalibrationData | nul
   ])
 
   // Ensure the determinant is positive
-  if (A_ellipsoid.det() < 0) {
+
+  if (determinant(A_ellipsoid) < 0) {
     A_ellipsoid.mul(-1)
     // also negate G, H, I, J from the solution vector
     G = -G
@@ -146,7 +147,7 @@ export function calibrateMagnetometer(points: Point[]): MagCalibrationData | nul
 
   // Calculate the hard-iron offset (V)
   const GHI = new Matrix([[G, H, I]]).transpose()
-  const inv_A_ellipsoid = A_ellipsoid.pseudoInverse()
+  const inv_A_ellipsoid = pseudoInverse(A_ellipsoid)
   const V_scaled = inv_A_ellipsoid.mmul(GHI).mul(-0.5)
 
   // Calculate the geomagnetic field strength (B)
@@ -165,11 +166,11 @@ export function calibrateMagnetometer(points: Point[]): MagCalibrationData | nul
 
   // Now, calculate the soft-iron correction matrix (invW)
   // invW = sqrt(A_ellipsoid_normalized)
-  const normFactor = Math.pow(A_ellipsoid.det(), -1 / 3)
+  const normFactor = Math.pow(determinant(A_ellipsoid), -1 / 3)
   const A_norm = A_ellipsoid.clone().mul(normFactor)
 
   // Find eigenvalues and eigenvectors of the normalized A matrix
-  const eigA = new Eigendecomposition(A_norm)
+  const eigA = new EigenvalueDecomposition(A_norm)
   const eigValA = eigA.realEigenvalues
   const eigVecA = eigA.eigenvectorMatrix
 
