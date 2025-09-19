@@ -48,7 +48,8 @@ export default function PointSpace(props: { points: () => Point[] } & JSX.Intrin
 
     // --- The Render Loop ---
     // We project and draw each point manually
-    for (const point of allPoints) {
+    for (let i = 0; i < allPoints.length; i++) {
+      const point = allPoints[i]
       // 1. Scale the point
       let x = point[0] * currentScale
       let y = point[1] * currentScale
@@ -79,7 +80,12 @@ export default function PointSpace(props: { points: () => Point[] } & JSX.Intrin
 
       // 5. Draw the point
       ctx.beginPath()
-      ctx.fillStyle = `rgba(0, 255, 255, ${Math.max(0.2, alpha)})`
+      ctx.fillStyle = `rgba(0, ${100 + 155 * alpha}, 255, ${Math.max(0.4, alpha)})`
+
+      if (i == allPoints.length - 1) {
+        ctx.fillStyle = `rgba(255, 0, 70)`
+      }
+
       ctx.arc(projX, projY, Math.max(0.5, radius), 0, 2 * Math.PI)
       ctx.fill()
     }

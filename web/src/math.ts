@@ -1,4 +1,4 @@
-import * as numeric from "numeric"
+import { Matrix, EigenvalueDecomposition } from "ml-matrix"
 
 export type Point = [number, number, number]
 
@@ -51,142 +51,136 @@ export function removeOutliersIQR(points: Point[]) {
   return filteredPoints
 }
 
-/**
- * Least-squares ellipsoid fitting for magnetometer calibration.
- * Produces hard-iron offset and 3x3 soft-iron correction matrix.
- */
+/* ------------------ MotionCal Port ------------------ */
+
+const MIN_POINTS = 150 // Corresponds to MINMEASUREMENTS10CAL in MotionCal
 
 export type MagCalibrationData = {
-  offset: [number, number, number]
-  matrix: number[][]
+  offset: [number, number, number] // Hard-iron offset (V)
+  matrix: number[][] // Soft-iron correction matrix (invW)
+  fitError: number // Fit error percentage
+  fieldStrength: number // Geomagnetic field strength (B)
 }
 
-export function calibrateMagnetometer(points: [number, number, number][]): MagCalibrationData | null {
-  const fit = fitEllipsoid(points)
-  console.log(fit)
-
-  if (!fit) {
-    console.log("ellipsoid fit returned null")
+/**
+ * Performs magnetometer calibration using a 10-parameter ellipsoid fit,
+ * ported from the robust MotionCal C code.
+ * @param points An array of magnetometer readings.
+ * @returns A calibration data object or null if calibration fails.
+ */
+export function calibrateMagnetometer(points: Point[]): MagCalibrationData | null {
+  if (points.length < MIN_POINTS) {
     return null
   }
 
-  const { center, radii, rotation: R } = fit
+  // Build the 10x10 scatter matrix (matA in MotionCal)
+  const matA = Matrix.zeros(10, 10)
 
-  // Среднее геометрическое радиусов
-  const g = Math.cbrt(radii[0] * radii[1] * radii[2])
-  const scale = [g / radii[0], g / radii[1], g / radii[2]]
+  // Find an initial offset to improve numerical stability, similar to MotionCal
+  const offset = points[0]
 
-  // Диагональная матрица масштабирования
-  const S = numeric.diag(scale)
+  for (const p of points) {
+    const x = p[0] - offset[0]
+    const y = p[1] - offset[1]
+    const z = p[2] - offset[2]
 
-  // M = R * S * R^T
-  const M = numeric.dot(R, numeric.dot(S, numeric.transpose(R))) as number[][]
+    const v = [x * x, 2 * x * y, 2 * x * z, y * y, 2 * y * z, z * z, x, y, z, 1]
 
-  return {
-    offset: [center[0], center[1], center[2]],
-    matrix: M,
-  }
-}
-
-/* ------------------ Ellipsoid fitting core ------------------ */
-
-type EllipsoidFitResult = {
-  center: [number, number, number]
-  radii: [number, number, number]
-  rotation: number[][]
-  algebraic: {
-    A: number
-    B: number
-    C: number
-    D: number
-    E: number
-    F: number
-    G: number
-    H: number
-    I: number
-    J: number
-  }
-}
-
-function fitEllipsoid(points: [number, number, number][]): EllipsoidFitResult | null {
-  window.numeric = numeric
-
-  if (points.length < 9) return null
-
-  // Матрица D: каждая строка = одна точка
-  const D = points.map(([x, y, z]) => [x * x, y * y, z * z, x * y, x * z, y * z, x, y, z, 1])
-
-  const DT = numeric.transpose(D)
-  const S = numeric.dot(DT, D) as number[][] // (10x10)
-
-  // Собственные значения/векторы
-  const eigRes = numeric.eig(S)
-  const eigenvalues = eigRes.lambda.x as number[]
-  const eigenvectors = eigRes.E.x as number[][]
-
-  // Берём вектор при минимальном собственном значении
-  let minIndex = 0
-  for (let i = 1; i < eigenvalues.length; i++) {
-    if (eigenvalues[i] < eigenvalues[minIndex]) minIndex = i
+    // Accumulate the outer product v * v'
+    for (let i = 0; i < 10; i++) {
+      for (let j = i; j < 10; j++) {
+        const current = matA.get(i, j)
+        matA.set(i, j, current + v[i] * v[j])
+      }
+    }
   }
 
-  const coeffs = eigenvectors.map(row => row[minIndex])
-  const [A, B, C, Dxy, Exz, Fyz, G, H, I, J] = coeffs
+  // Copy upper triangle to lower triangle to make the matrix symmetric
+  for (let i = 1; i < 10; i++) {
+    for (let j = 0; j < i; j++) {
+      matA.set(i, j, matA.get(j, i))
+    }
+  }
 
-  // Матрица квадратичной формы Q
-  const Q = [
-    [A, Dxy / 2, Exz / 2, G / 2],
-    [Dxy / 2, B, Fyz / 2, H / 2],
-    [Exz / 2, Fyz / 2, C, I / 2],
-    [G / 2, H / 2, I / 2, J],
+  // Find eigenvalues and eigenvectors
+  const eig = new EigenvalueDecomposition(matA)
+  const eigenvalues = eig.realEigenvalues
+  const eigenvectors = eig.eigenvectorMatrix
+
+  // Find the eigenvector corresponding to the smallest eigenvalue
+  let minEigVal = Infinity
+  let minEigValIndex = -1
+  for (let i = 0; i < eigenvalues.length; i++) {
+    if (eigenvalues[i] < minEigVal) {
+      minEigVal = eigenvalues[i]
+      minEigValIndex = i
+    }
+  }
+
+  if (minEigValIndex === -1) {
+    console.error("Failed to find minimum eigenvalue.")
+    return null
+  }
+
+  const solution = eigenvectors.getColumn(minEigValIndex)
+
+  // The solution vector holds the coefficients of the ellipsoid equation
+  let [A, D, E, B, F, C, G, H, I, J] = solution
+
+  // Form the 3x3 matrix 'A_ellipsoid' from the equation
+  let A_ellipsoid = new Matrix([
+    [A, D, E],
+    [D, B, F],
+    [E, F, C],
+  ])
+
+  // Ensure the determinant is positive
+  if (A_ellipsoid.det() < 0) {
+    A_ellipsoid.mul(-1)
+    // also negate G, H, I, J from the solution vector
+    G = -G
+    H = -H
+    I = -I
+    J = -J
+  }
+
+  // Calculate the hard-iron offset (V)
+  const GHI = new Matrix([[G, H, I]]).transpose()
+  const inv_A_ellipsoid = A_ellipsoid.pseudoInverse()
+  const V_scaled = inv_A_ellipsoid.mmul(GHI).mul(-0.5)
+
+  // Calculate the geomagnetic field strength (B)
+  const term1 = V_scaled.transpose().mmul(A_ellipsoid).mmul(V_scaled).get(0, 0)
+  const B_scaled = Math.sqrt(Math.abs(term1 - J))
+
+  // Calculate the trial fit error (percentage)
+  const fitError = (50 * Math.sqrt(Math.abs(minEigVal) / points.length)) / (B_scaled * B_scaled)
+
+  // Correct the hard-iron offset for the initial offset
+  const hardIronOffset = [
+    V_scaled.get(0, 0) + offset[0],
+    V_scaled.get(1, 0) + offset[1],
+    V_scaled.get(2, 0) + offset[2],
   ]
 
-  // Центр: -Q33⁻¹ * q34
-  const Q33 = Q.slice(0, 3).map(r => r.slice(0, 3))
-  const q34 = Q.slice(0, 3).map(r => r[3])
-  const center = numeric.neg(numeric.solve(Q33, q34)) as [number, number, number]
+  // Now, calculate the soft-iron correction matrix (invW)
+  // invW = sqrt(A_ellipsoid_normalized)
+  const normFactor = Math.pow(A_ellipsoid.det(), -1 / 3)
+  const A_norm = A_ellipsoid.clone().mul(normFactor)
 
-  // Сдвигаем в центр
-  const T = numeric.identity(4)
-  T[3][0] = center[0]
-  T[3][1] = center[1]
-  T[3][2] = center[2]
+  // Find eigenvalues and eigenvectors of the normalized A matrix
+  const eigA = new Eigendecomposition(A_norm)
+  const eigValA = eigA.realEigenvalues
+  const eigVecA = eigA.eigenvectorMatrix
 
-  const Qt = numeric.dot(numeric.transpose(T), numeric.dot(Q, T)) as number[][]
-
-  const M = Qt.slice(0, 3).map(r => r.slice(0, 3))
-  const k = -Qt[3][3]
-
-  // Собственные значения/векторы нормализованной матрицы
-  const eigM = numeric.eig(numeric.div(M, k))
-
-  // Проверяем, что вернулось
-  let evals: number[]
-  if (Array.isArray(eigM.lambda)) {
-    // Вещественные
-    evals = eigM.lambda as number[]
-  } else {
-    // Комплексные
-    const lx = eigM.lambda.x as number[]
-    const ly = eigM.lambda.y as number[]
-    evals = lx.map((re, i) => (ly && Math.abs(ly[i]) > 1e-6 ? NaN : re))
-  }
-
-  const V = eigM.E.x as number[][]
-
-  // Делаем радиусы безопасными
-  const safeEvals = evals.map(l => {
-    let val = l
-    if (!isFinite(val) || val <= 0) val = 1e-12
-    return val
-  })
-
-  const radii = safeEvals.map(l => Math.sqrt(1 / l)) as [number, number, number]
+  // invW = V * sqrt(D) * V'
+  const sqrtDiag = Matrix.diag(eigValA.map(v => Math.sqrt(Math.abs(v))))
+  const softIronMatrix = eigVecA.mmul(sqrtDiag).mmul(eigVecA.transpose())
 
   return {
-    center,
-    radii,
-    rotation: V,
-    algebraic: { A, B, C, D: Dxy, E: Exz, F: Fyz, G, H, I, J },
+    offset: hardIronOffset as [number, number, number],
+    matrix: softIronMatrix.to2DArray(),
+    fitError: fitError,
+    fieldStrength: B_scaled, // This is a scaled value, but consistent
   }
 }

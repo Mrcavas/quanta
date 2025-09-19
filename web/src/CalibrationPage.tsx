@@ -1,6 +1,6 @@
-import { createEffect, createSignal, For, on } from "solid-js"
+import { createEffect, createSignal, For, on, Show } from "solid-js"
 import PointSpace from "./PointSpace"
-import { calibrateAccelerometer, calibrateMagnetometer, Point, removeOutliersIQR } from "./math"
+import { calibrateAccelerometer, calibrateMagnetometer, Point, removeOutliersIQR, MagCalibrationData } from "./math"
 import {
   buildAccelCalibrationDataPacket,
   buildCalibrationDataPacket,
@@ -14,11 +14,15 @@ import {
 } from "./packets"
 import { createSessionSignal } from "./signal"
 
+const MIN_MAG_POINTS = 150
+
 export default function CalibrationPage(props: { ws: WebSocket; message: () => ArrayBuffer }) {
   const zeroPoint = [0, 0, 0] as Point
 
   const [collectedPoints, setCollectedPoints] = createSessionSignal<Point[]>("points", -1, [])
   const [calibratingMag, setCalibratingMag] = createSignal(false)
+  const [magCalData, setMagCalData] = createSignal<MagCalibrationData>()
+
   const [gyroPercentage, setGyroPercentage] = createSignal(100)
   const [accelPercentages, setAccelPercentages] = createSessionSignal("accelPercentages", -1, [0, 0, 0, 0, 0, 0])
   const [accelPoints, setAccelPoints] = createSessionSignal<Point[]>("accelPoints", -1, [
@@ -39,10 +43,19 @@ export default function CalibrationPage(props: { ws: WebSocket; message: () => A
       const [id, view] = getPacketData(buffer)
 
       if (id === 0xc0) {
-        setCollectedPoints([
+        const newPoints = [
           ...collectedPoints(),
-          [view.getFloat32(0, true), view.getFloat32(4, true), view.getFloat32(8, true)],
-        ])
+          [view.getFloat32(0, true), view.getFloat32(4, true), view.getFloat32(8, true)] as Point,
+        ]
+        setCollectedPoints(newPoints)
+
+        if (calibratingMag() && newPoints.length >= MIN_MAG_POINTS) {
+          const cleanPoints = removeOutliersIQR(newPoints)
+          const calData = calibrateMagnetometer(cleanPoints)
+          setMagCalData(calData)
+        } else {
+          setMagCalData()
+        }
       }
 
       if (id === 0xc2) {
@@ -93,30 +106,33 @@ export default function CalibrationPage(props: { ws: WebSocket; message: () => A
         </button>
         <button
           onClick={() => {
-            setCalibratingMag(v => !v)
-
-            if (calibratingMag()) {
+            if (!calibratingMag()) {
               props.ws.send(buildStartMagCalibrationPacket())
             } else {
-              let points = collectedPoints()
-              points = removeOutliersIQR(points)
-              const biasData = calibrateMagnetometer(points)
-              console.log(biasData)
+              console.log(magCalData())
 
-              if (!biasData) {
+              if (!magCalData()) {
                 props.ws.send(buildMagCalibrationStopPacket())
                 return void console.log("Failed to calibrate")
               }
 
-              props.ws.send(buildMagCalibrationDataPacket(biasData))
+              props.ws.send(buildMagCalibrationDataPacket(magCalData()))
             }
+
+            setCalibratingMag(v => !v)
           }}
           class={"rounded-lg px-4 py-2 " + (calibratingMag() ? "bg-blue-300" : "bg-cyan-300")}>
-          {calibratingMag() ? "Calculate and Save Bias" : "Start Calibration"}
+          {calibratingMag() ? "Send Calibration" : "Start Calibration"}
         </button>
       </div>
 
-      <p class="mt-0.5 text-gray-600">Points collected: {collectedPoints().length}</p>
+      <p class="mt-0.5 text-gray-600">
+        Points collected: {collectedPoints().length} / {MIN_MAG_POINTS}
+      </p>
+      <div class="mt-1 text-sm text-gray-700">
+        <p>Fit Error: {magCalData()?.fitError.toFixed(2) ?? "N/A"}%</p>
+        <p>Field Strength: {magCalData()?.fieldStrength.toFixed(2) ?? "N/A"} µT</p>
+      </div>
 
       <h3 class="text-md mt-6">Gyroscope</h3>
       <button

@@ -147,28 +147,17 @@ void handleAnchoring() {
   }
 }
 
-int i = 0;
-
 void setup() {
+  pinMode(SERVO_PIN, OUTPUT);
   // Serial.begin(460800);
   // delay(1800);
   writeServo(0);
 
   setupBiasesStorage();
+  setupPID();
   imuInitialized = setupIMU([](float yaw, RawICUData raw) {
     if (anchoring) {
-      float computed = tickPID(yawAnchor, yaw);
-
-      i++;
-      if (i == SAMPLE_RATE) {
-        sendMessagePacket(strprintf(
-            "yawAnchor: %f\nyaw: %f\ndiff: %f\ncomputed: %f", yawAnchor, yaw,
-            fmodf(yaw - yawAnchor + 540.0f, 360.0f) - 180.0f, computed));
-
-        i = 0;
-      }
-
-      writeServo(computed);
+      writeServo(tickPID(yawAnchor, yaw));
       return;
     }
 

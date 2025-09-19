@@ -21,16 +21,38 @@ static IMUCallback onYawUpdateCallback = NULL;
 
 uint8_t noDelayCount = 0;
 
+uint8_t readRegister8(uint8_t reg) {
+  uint8_t value = 0;
+  Wire.beginTransmission(0x1E);
+  Wire.write(reg);
+  Wire.endTransmission();
+  Wire.requestFrom((uint8_t)0x1E, (uint8_t)1);
+  while (!Wire.available()) {
+  };
+  value = Wire.read();
+  return value;
+}
+
+void writeRegister8(uint8_t reg, uint8_t value) {
+  Wire.beginTransmission(0x1E);
+  Wire.write(reg);
+  Wire.write(value);
+  Wire.endTransmission();
+}
+
 void imuTask(void *pvParameters) {
   // Serial.println("Task start");
   fusion.begin(SAMPLE_RATE);
 
   TickType_t xLastWakeTime = xTaskGetTickCount();
 
+  uint32_t time1, time2, time3, time4, time5;
+
   for (;;) {
     sensors_event_t acc, gyro, temp, mag;
-    mpu.getEvent(&acc, &gyro, &temp);
+
     hmc.getEvent(&mag);
+    mpu.getEvent(&acc, &gyro, &temp);
 
     RawICUData raw = {.ax = acc.acceleration.x / SENSORS_GRAVITY_EARTH,
                       .ay = acc.acceleration.y / SENSORS_GRAVITY_EARTH,
@@ -81,8 +103,9 @@ void imuTask(void *pvParameters) {
         pdFALSE) {
       noDelayCount++;
 
-      if (noDelayCount == 120) {
-        sendMessagePacket("The sample rate is too big");
+      if (noDelayCount == SAMPLE_RATE * 2) {
+        sendMessagePacket(strprintf("SAMPLE_RATE is too big"));
+        noDelayCount = 0;
       }
     }
   }
@@ -100,12 +123,17 @@ bool setupIMU(IMUCallback pidCallback) {
 
   mpu.setAccelerometerRange(MPU6050_RANGE_2_G);
   mpu.setGyroRange(MPU6050_RANGE_250_DEG);
-  mpu.setFilterBandwidth(MPU6050_BAND_94_HZ);
+  mpu.setFilterBandwidth(MPU6050_BAND_260_HZ);
 
   if (!hmc.begin()) {
     // Serial.println("Magnetometer not initialized");
     return false;
   }
+
+  uint8_t value = readRegister8(0x00);
+  value &= 0b11100011;
+  value |= (0b110 << 2);
+  writeRegister8(0x00, value);
 
   yawMutex = xSemaphoreCreateMutex();
   if (yawMutex == NULL)
