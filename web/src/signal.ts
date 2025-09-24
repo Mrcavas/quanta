@@ -7,21 +7,23 @@ export function createSessionSignal<T>(
 export function createSessionSignal<T>(
   name: string,
   invalidationTime: number,
-  initial: T
+  initial: T,
+  storage?: Storage
 ): [Accessor<T>, (v?: T) => void]
 export function createSessionSignal<T>(
   name: string,
   invalidationTime: number,
-  initial?: T
+  initial?: T,
+  storage: Storage = sessionStorage
 ): [Accessor<T | undefined>, (v?: T) => void] {
   const [value, setValue] = createSignal(initial)
 
   onMount(() => {
-    const stored = sessionStorage.getItem(name)
+    const stored = storage.getItem(name)
     if (stored) {
       const parsed = JSON.parse(stored)
       if ("invalidateAfter" in parsed && Date.now() > parsed.invalidateAfter) {
-        sessionStorage.removeItem(name)
+        storage.removeItem(name)
         setValue(initial as Exclude<T, Function>)
       } else setValue(parsed.value)
     }
@@ -30,17 +32,17 @@ export function createSessionSignal<T>(
   return [
     value,
     v => {
-      if (v === undefined) sessionStorage.removeItem(name)
+      if (v === undefined) storage.removeItem(name)
       else {
         if (invalidationTime === -1)
-          sessionStorage.setItem(
+          storage.setItem(
             name,
             JSON.stringify({
               value: v,
             })
           )
         else
-          sessionStorage.setItem(
+          storage.setItem(
             name,
             JSON.stringify({
               value: v,

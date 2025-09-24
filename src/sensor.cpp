@@ -46,8 +46,6 @@ void imuTask(void *pvParameters) {
 
   TickType_t xLastWakeTime = xTaskGetTickCount();
 
-  uint32_t time1, time2, time3, time4, time5;
-
   for (;;) {
     sensors_event_t acc, gyro, temp, mag;
 
@@ -74,15 +72,15 @@ void imuTask(void *pvParameters) {
     float my = raw.my - calibration.magY;
     float mz = raw.mz - calibration.magZ;
 
-    float mx_final = calibration.magScale[0][0] * raw.mx +
-                     calibration.magScale[0][1] * raw.my +
-                     calibration.magScale[0][2] * raw.mz;
-    float my_final = calibration.magScale[1][0] * raw.mx +
-                     calibration.magScale[1][1] * raw.my +
-                     calibration.magScale[1][2] * raw.mz;
-    float mz_final = calibration.magScale[2][0] * raw.mx +
-                     calibration.magScale[2][1] * raw.my +
-                     calibration.magScale[2][2] * raw.mz;
+    float mx_final = calibration.magScale[0][0] * mx +
+                     calibration.magScale[0][1] * my +
+                     calibration.magScale[0][2] * mz;
+    float my_final = calibration.magScale[1][0] * mx +
+                     calibration.magScale[1][1] * my +
+                     calibration.magScale[1][2] * mz;
+    float mz_final = calibration.magScale[2][0] * mx +
+                     calibration.magScale[2][1] * my +
+                     calibration.magScale[2][2] * mz;
 
     fusion.update(gx, gy, gz, ax, ay, az, mx_final, my_final, mz_final);
 

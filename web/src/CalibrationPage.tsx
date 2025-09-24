@@ -1,6 +1,6 @@
 import { createEffect, createSignal, For, on, Show } from "solid-js"
 import PointSpace from "./PointSpace"
-import { calibrateAccelerometer, calibrateMagnetometer, Point, removeOutliersIQR, MagCalibrationData } from "./math"
+import { calibrateAccelerometer, calibrateMagnetometer, Point, MagCalibrationData } from "./math"
 import {
   buildAccelCalibrationDataPacket,
   buildCalibrationDataPacket,
@@ -19,9 +19,10 @@ const MIN_MAG_POINTS = 150
 export default function CalibrationPage(props: { ws: WebSocket; message: () => ArrayBuffer }) {
   const zeroPoint = [0, 0, 0] as Point
 
-  const [collectedPoints, setCollectedPoints] = createSessionSignal<Point[]>("points", -1, [])
+  const [collectedPoints, setCollectedPoints] = createSessionSignal<Point[]>("points", -1, [], localStorage)
   const [calibratingMag, setCalibratingMag] = createSignal(false)
-  const [magCalData, setMagCalData] = createSignal<MagCalibrationData>()
+  const [magCalData, setMagCalData] = createSignal<MagCalibrationData | undefined>()
+  const [displayFixed, setDisplayFixed] = createSignal(false)
 
   const [gyroPercentage, setGyroPercentage] = createSignal(100)
   const [accelPercentages, setAccelPercentages] = createSessionSignal("accelPercentages", -1, [0, 0, 0, 0, 0, 0])
@@ -50,8 +51,9 @@ export default function CalibrationPage(props: { ws: WebSocket; message: () => A
         setCollectedPoints(newPoints)
 
         if (calibratingMag() && newPoints.length >= MIN_MAG_POINTS) {
-          const cleanPoints = removeOutliersIQR(newPoints)
-          const calData = calibrateMagnetometer(cleanPoints)
+          if (newPoints.length % 5 != 0) return
+
+          const calData = calibrateMagnetometer(newPoints)
           setMagCalData(calData)
         } else {
           setMagCalData()
@@ -88,7 +90,12 @@ export default function CalibrationPage(props: { ws: WebSocket; message: () => A
       <h2 class="text-lg">Calibration</h2>
       <h3 class="text-md mt-1">Magnetometer</h3>
 
-      <PointSpace points={collectedPoints} class="mt-1 aspect-square w-full overflow-hidden rounded-lg" />
+      <PointSpace
+        points={collectedPoints()}
+        calData={displayFixed() ? magCalData() : undefined}
+        onClick={() => setDisplayFixed(v => !v)}
+        class="mt-1 aspect-square w-full overflow-hidden rounded-lg"
+      />
 
       <div class="mt-4 flex gap-4">
         <button

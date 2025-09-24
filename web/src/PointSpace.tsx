@@ -1,10 +1,12 @@
 import { createEffect, createMemo, createSignal, splitProps } from "solid-js"
 import { JSX } from "solid-js"
 import { createElementBounds } from "@solid-primitives/bounds"
-import { Point } from "./math"
+import { fixMagPoint, MagCalibrationData, Point } from "./math"
 
-export default function PointSpace(props: { points: () => Point[] } & JSX.IntrinsicElements["div"]) {
-  const [_, divProps] = splitProps(props, ["points"])
+export default function PointSpace(
+  props: { points: Point[]; calData?: MagCalibrationData } & JSX.IntrinsicElements["div"]
+) {
+  const [_, divProps] = splitProps(props, ["points", "calData"])
 
   let canvas
   const [container, containerRef] = createSignal<HTMLDivElement>()
@@ -12,30 +14,25 @@ export default function PointSpace(props: { points: () => Point[] } & JSX.Intrin
 
   const size = () => Math.min(bounds.width, bounds.height) - 40
 
-  // --- 3D Math Setup ---
-  // We'll use the same fixed rotation as the CSS version for a consistent look
-  const rotationX = -60 * (Math.PI / 180) // in radians
-  const rotationZ = -45 * (Math.PI / 180) // in radians
+  const rotationX = 0 * (Math.PI / 180) // in radians
+  const rotationZ = 0 * (Math.PI / 180) // in radians
   const perspective = () => size() * 2
 
-  // Memoize normalization calculations so they only run when points change
-  const maxAbsValue = createMemo(() => {
-    const allPoints = props.points()
-    if (allPoints.length === 0) return 1
+  const points = () => (props.calData ? props.points.map(p => fixMagPoint(p, props.calData)) : props.points)
+
+  const scaleFactor = createMemo(() => {
+    const allPoints = points()
     let max = 0
     for (const p of allPoints) {
       if (Math.abs(p[0]) > max) max = Math.abs(p[0])
       if (Math.abs(p[1]) > max) max = Math.abs(p[1])
       if (Math.abs(p[2]) > max) max = Math.abs(p[2])
     }
-    return max === 0 ? 1 : max
+    return size() / 2 / (max === 0 ? 1 : max)
   })
 
-  const scaleFactor = createMemo(() => size() / 2 / maxAbsValue())
-
-  // createEffect will re-run the drawing logic whenever the points signal changes.
   createEffect(() => {
-    const allPoints = props.points()
+    const allPoints = points()
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
@@ -47,40 +44,38 @@ export default function PointSpace(props: { points: () => Point[] } & JSX.Intrin
     const currentScale = scaleFactor()
 
     // --- The Render Loop ---
-    // We project and draw each point manually
     for (let i = 0; i < allPoints.length; i++) {
       const point = allPoints[i]
-      // 1. Scale the point
+
+      // normal point
       let x = point[0] * currentScale
       let y = point[1] * currentScale
       let z = point[2] * currentScale
 
-      // 2. Rotate the point in 3D space (same as CSS transform)
-      // Rotate around X axis
       let tempY = y * Math.cos(rotationX) - z * Math.sin(rotationX)
       let tempZ = y * Math.sin(rotationX) + z * Math.cos(rotationX)
       y = tempY
       z = tempZ
-      // Rotate around Z axis
       let tempX = x * Math.cos(rotationZ) - y * Math.sin(rotationZ)
       tempY = x * Math.sin(rotationZ) + y * Math.cos(rotationZ)
       x = tempX
       y = tempY
 
-      // 3. Project the 3D point onto the 2D canvas
       const perspectiveFactor = perspective() / (perspective() + z)
       const projX = x * perspectiveFactor + centerX
       const projY = -y * perspectiveFactor + centerY // Y is inverted in canvas coords
 
-      // 4. Depth Cueing: Make points closer to the camera brighter and bigger
       const alpha = 0.7 + 0.3 * (z / (size() / 2)) // Opacity based on depth
 
       const maxRadius = size() * 0.01
       const radius = (maxRadius * 3) / 4 + (maxRadius / 4) * (z / (size() / 2)) // Radius based on depth
 
-      // 5. Draw the point
       ctx.beginPath()
-      ctx.fillStyle = `rgba(0, ${100 + 155 * alpha}, 255, ${Math.max(0.4, alpha)})`
+      if (props.calData) {
+        ctx.fillStyle = `rgba(${100 + 155 * alpha}, 255, 0, ${Math.max(0.4, alpha)})`
+      } else {
+        ctx.fillStyle = `rgba(0, ${100 + 155 * alpha}, 255, ${Math.max(0.4, alpha)})`
+      }
 
       if (i == allPoints.length - 1) {
         ctx.fillStyle = `rgba(255, 0, 70)`
