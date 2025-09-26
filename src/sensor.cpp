@@ -84,7 +84,7 @@ void imuTask(void *pvParameters) {
 
     fusion.update(gx, gy, gz, ax, ay, az, mx_final, my_final, mz_final);
 
-    float newYaw = fusion.getYaw();
+    float newYaw = fmodf(fusion.getYaw() - calibration.north, 360.0f);
 
     // 5. Update the global yaw variable (for the thread-safe getter)
     if (xSemaphoreTake(yawMutex, (TickType_t)10) == pdTRUE) {

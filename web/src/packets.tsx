@@ -22,9 +22,18 @@ export function buildControlPacket(angle: number, speed: number) {
   return buffer
 }
 
-export function buildUpdateAnchoringPacket(anchoring: boolean) {
-  const [buffer, view] = makePacketView(0x0a, 1)
-  view.setUint8(0, +anchoring)
+export function buildUpdateAnchoringPacket(yawAnchor: number): ArrayBuffer
+export function buildUpdateAnchoringPacket(anchoring: boolean): ArrayBuffer
+export function buildUpdateAnchoringPacket(value: number | boolean): ArrayBuffer {
+  if (value === true || value === false) {
+    const [buffer, view] = makePacketView(0x0a, 1)
+    view.setUint8(0, +value)
+
+    return buffer
+  }
+
+  const [buffer, view] = makePacketView(0x0a, 4)
+  view.setFloat32(0, value, true)
 
   return buffer
 }
@@ -83,10 +92,15 @@ export function buildCalibrationDataRequestPacket() {
 }
 
 export function buildCalibrationDataPacket(calibrationData: number[]) {
-  const [buffer, view] = makePacketView(0xa1, 18 * 4)
+  const [buffer, view] = makePacketView(0xa1, 19 * 4)
 
   calibrationData.forEach((n, i) => view.setFloat32(i * 4, n, true))
 
+  return buffer
+}
+
+export function buildSetNorthPacket() {
+  const [buffer, _] = makePacketView(0xc9, 0)
   return buffer
 }
 

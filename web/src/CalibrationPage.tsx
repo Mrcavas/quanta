@@ -7,6 +7,7 @@ import {
   buildCalibrationDataRequestPacket,
   buildMagCalibrationDataPacket,
   buildMagCalibrationStopPacket,
+  buildSetNorthPacket,
   buildStartAccelCalibrationPacket,
   buildStartGyroCalibrationPacket,
   buildStartMagCalibrationPacket,
@@ -35,7 +36,7 @@ export default function CalibrationPage(props: { ws: WebSocket; message: () => A
     zeroPoint,
   ])
   const accelAxesLabels = ["+X", "-X", "+Y", "-Y", "+Z", "-Z"]
-  const defaultCalData = [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]
+  const defaultCalData = [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0]
   const [calibrationData, setCalibrationData] = createSignal<number[]>(defaultCalData)
 
   createEffect(
@@ -80,7 +81,7 @@ export default function CalibrationPage(props: { ws: WebSocket; message: () => A
       }
 
       if (id === 0xa0) {
-        setCalibrationData(Array.from({ length: 18 }).map((_, i) => view.getFloat32(i * 4, true)))
+        setCalibrationData(Array.from({ length: 19 }).map((_, i) => view.getFloat32(i * 4, true)))
       }
     })
   )
@@ -187,6 +188,13 @@ export default function CalibrationPage(props: { ws: WebSocket; message: () => A
         }}
         class="mt-4 rounded-lg bg-fuchsia-300 px-4 py-2">
         Send Calibration Data
+      </button>
+
+      <h3 class="text-md mt-6">Yaw Offset</h3>
+      <button
+        onClick={() => props.ws.send(buildSetNorthPacket())}
+        class="mt-1 w-40 rounded-lg bg-green-300 px-4 py-2 inset-ring-2 inset-ring-green-400">
+        Set North (0°)
       </button>
 
       <h3 class="text-md mt-6">Parameters</h3>
@@ -329,6 +337,17 @@ export default function CalibrationPage(props: { ws: WebSocket; message: () => A
           type="number"
           value={calibrationData()[17]}
           onInput={e => setCalibrationData(prev => prev.with(17, e.target.valueAsNumber))}
+        />
+      </div>
+
+      <h4 class="mt-1 text-sm">Yaw Offset</h4>
+      <div class="grid grid-cols-3 gap-2">
+        <input
+          class="col-start-2 rounded-sm bg-gray-300"
+          name="North"
+          type="number"
+          value={calibrationData()[18]}
+          onInput={e => setCalibrationData(prev => prev.with(18, e.target.valueAsNumber))}
         />
       </div>
 

@@ -64,6 +64,10 @@ void handlePacket(uint8_t id, const uint8_t *data, size_t len) {
         strprintf("IMU is %sinitialized", imuInitialized ? "" : "not "));
   }
 
+  if (id == 0x0a && len == 4) {
+    memcpy(&yawAnchor, data, sizeof(float));
+  }
+
   if ((id == 'p' || id == 'i' || id == 'd') && len == 4) {
     float val;
     memcpy(&val, data, sizeof(float));

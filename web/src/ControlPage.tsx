@@ -46,8 +46,8 @@ export default function ControlPage(props: { ws: WebSocket; message: () => Array
 
       <div class="relative my-2 size-40 overflow-hidden rounded-full bg-gray-600">
         <div
-          class="absolute left-19.5 h-20.5 w-1 origin-[0.125rem_5rem] rounded-b-full bg-green-700"
-          style={{ rotate: `${yawAnchor()}deg` }}
+          class="absolute left-19.5 h-40 w-1 origin-[0.125rem_5rem] rounded-b-full bg-green-700"
+          style={{ rotate: `${yawAnchor()}deg`, opacity: anchoring() ? undefined : 0 }}
         />
         <div
           class="absolute left-19.5 h-20.5 w-1 origin-[0.125rem_5rem] rounded-b-full bg-red-700"
@@ -89,7 +89,7 @@ export default function ControlPage(props: { ws: WebSocket; message: () => Array
           }}
         />
       </div>
-      <div class="mb-5 flex w-full flex-row items-center justify-center gap-2">
+      <div class="mb-4 flex w-full flex-row items-center justify-center gap-2">
         <label class="font-mono text-nowrap">D: {kd().toFixed(1)}</label>
         <input
           type="range"
@@ -106,8 +106,8 @@ export default function ControlPage(props: { ws: WebSocket; message: () => Array
         />
       </div>
 
-      <div class="mb-2 flex w-full flex-row items-center justify-center gap-2">
-        <label for="anchoring" class="text-nowrap">
+      <div class="mb-4 flex w-full flex-row items-center justify-center">
+        <label for="anchoring" class="me-2 text-nowrap">
           Anchoring:
         </label>
         <input
@@ -115,16 +115,28 @@ export default function ControlPage(props: { ws: WebSocket; message: () => Array
           type="checkbox"
           name="Anchoring"
           checked={anchoring()}
-          class=""
+          class="me-4"
           onInput={e => {
             setAnchoring(e.target.checked)
             props.ws.send(buildUpdateAnchoringPacket(anchoring()))
           }}
         />
-        <label for="anchoring" class="text-nowrap">
-          <Show when={anchoring()}>at: {yawAnchor()}</Show>
-        </label>
+        at:
+        <input
+          class="ms-2 w-20 rounded-sm bg-gray-300 disabled:bg-gray-100"
+          name="Yaw Anchor"
+          type="number"
+          disabled={!anchoring()}
+          value={yawAnchor()}
+          onInput={e => {
+            if (!isNaN(e.target.valueAsNumber)) {
+              setYawAnchor(e.target.valueAsNumber)
+              props.ws.send(buildUpdateAnchoringPacket(yawAnchor()))
+            }
+          }}
+        />
       </div>
+
       <div class="mb-5 flex w-full flex-row items-center justify-center gap-2">
         <label class="text-nowrap">Max Speed:</label>
         <input

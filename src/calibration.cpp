@@ -24,6 +24,7 @@ void saveBiasStore(CalibrationStore *store) {
   calPrefs.putFloat("magScale6", store->magScale[2][0]);
   calPrefs.putFloat("magScale7", store->magScale[2][1]);
   calPrefs.putFloat("magScale8", store->magScale[2][2]);
+  calPrefs.putFloat("north", store->north);
 }
 
 bool setupBiasesStorage() {
@@ -49,6 +50,7 @@ bool setupBiasesStorage() {
     calibration.magScale[2][0] = calPrefs.getFloat("magScale6");
     calibration.magScale[2][1] = calPrefs.getFloat("magScale7");
     calibration.magScale[2][2] = calPrefs.getFloat("magScale8");
+    calibration.north = calPrefs.getFloat("north");
   }
 
   return true;

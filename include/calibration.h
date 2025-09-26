@@ -15,6 +15,7 @@ struct CalibrationStore {
   float magY;
   float magZ;
   float magScale[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+  float north;
 };
 
 extern Preferences calPrefs;
