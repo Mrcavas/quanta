@@ -41,7 +41,7 @@ export default function ControlPage(props: { ws: WebSocket; message: () => Array
   return (
     <>
       <h2 class="text-md">Angle: {settings().rotation.toFixed(0)}</h2>
-      <h2 class="text-md">Speed: {settings().speed.toFixed(0)}</h2>
+      <h2 class="text-md">Speed: {((settings().speed - 1500) / 500).toFixed(0)}%</h2>
       <h2 class="text-md mt-1">Current Yaw: {yaw().toFixed(1)}</h2>
 
       <div class="relative my-2 size-40 overflow-hidden rounded-full bg-gray-600">

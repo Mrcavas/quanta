@@ -119,9 +119,9 @@ bool setupIMU(IMUCallback pidCallback) {
 
   mpu.setI2CBypass(true);
 
-  mpu.setAccelerometerRange(MPU6050_RANGE_2_G);
-  mpu.setGyroRange(MPU6050_RANGE_250_DEG);
-  mpu.setFilterBandwidth(MPU6050_BAND_260_HZ);
+  mpu.setAccelerometerRange(MPU6050_RANGE_4_G);
+  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+  mpu.setFilterBandwidth(MPU6050_BAND_94_HZ);
 
   if (!hmc.begin()) {
     // Serial.println("Magnetometer not initialized");

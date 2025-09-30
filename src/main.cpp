@@ -60,8 +60,6 @@ void handlePacket(uint8_t id, const uint8_t *data, size_t len) {
   if (id == 0x0a && len == 1) {
     memcpy(&anchoring, data, sizeof(bool));
     handleAnchoring();
-    sendMessagePacket(
-        strprintf("IMU is %sinitialized", imuInitialized ? "" : "not "));
   }
 
   if (id == 0x0a && len == 4) {
@@ -86,6 +84,8 @@ void handlePacket(uint8_t id, const uint8_t *data, size_t len) {
     sendInitPacket(pid.getKp(), pid.getKi(), pid.getKd());
     sendAnchoringPacket(&anchoring);
     sendYawAnchorPacket(yawAnchor);
+    sendMessagePacket(
+        strprintf("IMU is %sinitialized", imuInitialized ? "" : "not "));
   }
 
   if (id == 0xff && len == 0) {
