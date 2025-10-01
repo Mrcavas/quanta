@@ -10,24 +10,24 @@
 #include <AsyncTCP.h>
 #include <AsyncWebSocket.h>
 #include <ESPAsyncWebServer.h>
-// #include <EncButton.h>
+#include <EncButton.h>
 #include <LittleFS.h>
 #include <Servo.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
 
-// #define EB_NO_FOR
-// #define EB_NO_CALLBACK
-// #define EB_NO_COUNTER
-// #define EB_NO_BUFFER
-// #define EB_DEB_TIME 20
+#define EB_NO_FOR
+#define EB_NO_CALLBACK
+#define EB_NO_COUNTER
+#define EB_NO_BUFFER
+#define EB_DEB_TIME 20
 
 #define SERVO_PIN 21
 #define MOTOR_PIN 20
 #define BUTTON_PIN 10
 
 Servo servo = Servo();
-// Button button(BUTTON_PIN);
+Button button(BUTTON_PIN);
 float yawAnchor;
 bool anchoring = false, magCalibrating = false, gyroCalibrating = false;
 uint8_t accelCalibrating = 255;
@@ -38,6 +38,18 @@ uint16_t sampleIndex = 0;
 uint32_t lastPingTime;
 uint32_t lastUpdateSentTime;
 bool imuInitialized;
+
+#define MAX_AP_SPEED_PERCENTAGE 23
+
+enum AutoPilotState {
+  AP_DISABLED,
+  AP_READY,
+  AP_GOING,
+};
+
+enum AutoPilotState apState = AP_DISABLED;
+float apSpeed = 1500;
+uint32_t apStartTime = -1;
 
 void handleAnchoring();
 
@@ -226,44 +238,60 @@ void setup() {
     }
   });
 
+  loadCoefficients();
+
+  button.tick();
+  if (button.read()) {
+    apState = AP_READY;
+    return;
+  }
+
   setupWS([](AsyncWebSocket *server, AsyncWebSocketClient *client,
              const uint8_t *data, size_t len) {
     auto id = data[0];
     handlePacket(id, data + 1, len - 1);
   });
 
-  loadCoefficients();
-
   lastPingTime = millis();
   lastUpdateSentTime = millis();
 }
 
 void loop() {
-  /* button.tick();
+  if (apState == AP_DISABLED) {
+    if (millis() - lastUpdateSentTime > 180) {
+      lastUpdateSentTime = millis();
 
-  if (button.click()) {
-    anchoring = !anchoring;
+      if (magCalibrating)
+        sendMagPointPacket(mx, my, mz);
+      else
+        sendRotationPacket(getYaw());
+    }
 
-    handleAnchoring();
-    sendAnchoringPacket(&anchoring);
-  } */
-
-  if (millis() - lastUpdateSentTime > 180) {
-    lastUpdateSentTime = millis();
-
-    if (magCalibrating)
-      sendMagPointPacket(mx, my, mz);
-    else
-      sendRotationPacket(getYaw());
+    tickWS();
+    return;
   }
 
-  // if (millis() - lastPingTime > 2000) {
-  //   anchoring = false;
-  //   handleAnchoring();
-  //   servo.write(MOTOR_PIN, 0);
+  button.tick();
 
-  //   lastPingTime = millis();
-  // }
+  if (apState == AP_READY && !button.read()) {
+    apState = AP_GOING;
+    apStartTime = millis();
+    anchoring = true;
+    yawAnchor = getYaw();
+  }
 
-  tickWS();
+  if (apState == AP_GOING) {
+    auto duration = millis() - apStartTime;
+
+    apSpeed = 1500.0f + min(MAX_AP_SPEED_PERCENTAGE * 5.0f, 0.05f * duration);
+    servo.write(MOTOR_PIN, apSpeed);
+
+    if (duration > 30000) {
+      servo.write(MOTOR_PIN, 0);
+      anchoring = false;
+
+      for (;;)
+        yield();
+    }
+  }
 }
