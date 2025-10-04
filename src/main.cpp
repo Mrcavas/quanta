@@ -10,24 +10,27 @@
 #include <AsyncTCP.h>
 #include <AsyncWebSocket.h>
 #include <ESPAsyncWebServer.h>
-#include <EncButton.h>
 #include <LittleFS.h>
 #include <Servo.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
 
-#define EB_NO_FOR
-#define EB_NO_CALLBACK
-#define EB_NO_COUNTER
-#define EB_NO_BUFFER
-#define EB_DEB_TIME 20
+// #define EB_NO_FOR
+// #define EB_NO_CALLBACK
+// #define EB_NO_COUNTER
+// #define EB_NO_BUFFER
+// #define EB_DEB_TIME 20
+
+// #include <EncButton.h>
 
 #define SERVO_PIN 21
 #define MOTOR_PIN 20
 #define BUTTON_PIN 10
 
+#define GYRO_SAMPLES (20 * SAMPLE_RATE)
+
 Servo servo = Servo();
-Button button(BUTTON_PIN);
+// Button button(BUTTON_PIN);
 float yawAnchor;
 bool anchoring = false, magCalibrating = false, gyroCalibrating = false;
 uint8_t accelCalibrating = 255;
@@ -39,8 +42,6 @@ uint32_t lastPingTime;
 uint32_t lastUpdateSentTime;
 bool imuInitialized;
 
-#define MAX_AP_SPEED_PERCENTAGE 23
-
 enum AutoPilotState {
   AP_DISABLED,
   AP_READY,
@@ -48,14 +49,14 @@ enum AutoPilotState {
 };
 
 enum AutoPilotState apState = AP_DISABLED;
-float apSpeed = 1500;
 uint32_t apStartTime = -1;
 
 void handleAnchoring();
 
 void writeServo(float output) {
-  servo.write(SERVO_PIN, SERVO_MIDDLE - fmaxf(-SERVO_MAX_DIFF,
-                                              fminf(SERVO_MAX_DIFF, output)));
+  servo.write(SERVO_PIN,
+              calibration.servoMiddle -
+                  fmaxf(-SERVO_MAX_DIFF, fminf(SERVO_MAX_DIFF, output)));
 }
 
 void handlePacket(uint8_t id, const uint8_t *data, size_t len) {
@@ -97,7 +98,7 @@ void handlePacket(uint8_t id, const uint8_t *data, size_t len) {
     sendAnchoringPacket(&anchoring);
     sendYawAnchorPacket(yawAnchor);
     sendMessagePacket(
-        strprintf("IMU is %sinitialized", imuInitialized ? "" : "not "));
+        strf("IMU is %sinitialized", imuInitialized ? "" : "not "));
   }
 
   if (id == 0xff && len == 0) {
@@ -150,6 +151,7 @@ void handlePacket(uint8_t id, const uint8_t *data, size_t len) {
   if (id == 0xa1 && len == sizeof(CalibrationStore)) {
     memcpy(&calibration, data, sizeof(CalibrationStore));
     saveBiasStore(&calibration);
+    writeServo(0);
   }
 }
 
@@ -165,11 +167,12 @@ void handleAnchoring() {
 
 void setup() {
   pinMode(SERVO_PIN, OUTPUT);
+  pinMode(BUTTON_PIN, INPUT);
   // Serial.begin(460800);
-  // delay(1800);
-  writeServo(0);
-
   setupBiasesStorage();
+  writeServo(0);
+  servo.write(MOTOR_PIN, 1500);
+
   setupPID();
   imuInitialized = setupIMU([](float yaw, RawICUData raw) {
     if (anchoring) {
@@ -188,13 +191,14 @@ void setup() {
       sampleIndex++;
 
       if (sampleIndex % 50 == 0) {
-        sendGyroCalibrationProgressPacket((float)sampleIndex / 1000.0 * 100.0);
+        sendGyroCalibrationProgressPacket((float)sampleIndex /
+                                          (float)GYRO_SAMPLES * 100.0);
       }
 
-      if (sampleIndex == 1000) {
-        calibration.gyroX = gyroSum[0] / 1000.0;
-        calibration.gyroY = gyroSum[1] / 1000.0;
-        calibration.gyroZ = gyroSum[2] / 1000.0;
+      if (sampleIndex == GYRO_SAMPLES) {
+        calibration.gyroX = gyroSum[0] / (float)GYRO_SAMPLES;
+        calibration.gyroY = gyroSum[1] / (float)GYRO_SAMPLES;
+        calibration.gyroZ = gyroSum[2] / (float)GYRO_SAMPLES;
 
         saveBiasStore(&calibration);
 
@@ -240,11 +244,26 @@ void setup() {
 
   loadCoefficients();
 
-  button.tick();
-  if (button.read()) {
+  delay(1500);
+
+  writeServo(10);
+  delay(100);
+  writeServo(0);
+
+  delay(1500);
+
+  if (digitalRead(BUTTON_PIN)) {
+    writeServo(-10);
+    delay(100);
+    writeServo(0);
+
     apState = AP_READY;
     return;
   }
+
+  writeServo(10);
+  delay(100);
+  writeServo(0);
 
   setupWS([](AsyncWebSocket *server, AsyncWebSocketClient *client,
              const uint8_t *data, size_t len) {
@@ -257,6 +276,8 @@ void setup() {
 }
 
 void loop() {
+  tickWS();
+
   if (apState == AP_DISABLED) {
     if (millis() - lastUpdateSentTime > 180) {
       lastUpdateSentTime = millis();
@@ -267,13 +288,10 @@ void loop() {
         sendRotationPacket(getYaw());
     }
 
-    tickWS();
     return;
   }
 
-  button.tick();
-
-  if (apState == AP_READY && !button.read()) {
+  if (apState == AP_READY && !digitalRead(BUTTON_PIN)) {
     apState = AP_GOING;
     apStartTime = millis();
     anchoring = true;
@@ -283,12 +301,14 @@ void loop() {
   if (apState == AP_GOING) {
     auto duration = millis() - apStartTime;
 
-    apSpeed = 1500.0f + min(MAX_AP_SPEED_PERCENTAGE * 5.0f, 0.05f * duration);
-    servo.write(MOTOR_PIN, apSpeed);
+    float apSpeed =
+        1500.0f + min(calibration.maxAPSpeed * 5.0f - 35.0f, 0.05f * duration);
+    servo.write(MOTOR_PIN, apSpeed + 35.0f);
 
     if (duration > 30000) {
       servo.write(MOTOR_PIN, 0);
       anchoring = false;
+      writeServo(0);
 
       for (;;)
         yield();

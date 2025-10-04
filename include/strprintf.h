@@ -1,3 +1,3 @@
 #include <Arduino.h>
 
-String strprintf(const char *fmt, ...);
+String strf(const char *fmt, ...);

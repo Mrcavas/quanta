@@ -25,33 +25,35 @@ void saveBiasStore(CalibrationStore *store) {
   calPrefs.putFloat("magScale7", store->magScale[2][1]);
   calPrefs.putFloat("magScale8", store->magScale[2][2]);
   calPrefs.putFloat("north", store->north);
+  calPrefs.putFloat("servoMiddle", store->servoMiddle);
+  calPrefs.putFloat("maxAPSpeed", store->maxAPSpeed);
 }
 
 bool setupBiasesStorage() {
   if (!calPrefs.begin("calibration", false))
     return false;
 
-  if (calPrefs.isKey("gyroX")) {
-    calibration.gyroX = calPrefs.getFloat("gyroX");
-    calibration.gyroY = calPrefs.getFloat("gyroY");
-    calibration.gyroZ = calPrefs.getFloat("gyroZ");
-    calibration.accelX = calPrefs.getFloat("accelX");
-    calibration.accelY = calPrefs.getFloat("accelY");
-    calibration.accelZ = calPrefs.getFloat("accelZ");
-    calibration.magX = calPrefs.getFloat("magX");
-    calibration.magY = calPrefs.getFloat("magY");
-    calibration.magZ = calPrefs.getFloat("magZ");
-    calibration.magScale[0][0] = calPrefs.getFloat("magScale0");
-    calibration.magScale[0][1] = calPrefs.getFloat("magScale1");
-    calibration.magScale[0][2] = calPrefs.getFloat("magScale2");
-    calibration.magScale[1][0] = calPrefs.getFloat("magScale3");
-    calibration.magScale[1][1] = calPrefs.getFloat("magScale4");
-    calibration.magScale[1][2] = calPrefs.getFloat("magScale5");
-    calibration.magScale[2][0] = calPrefs.getFloat("magScale6");
-    calibration.magScale[2][1] = calPrefs.getFloat("magScale7");
-    calibration.magScale[2][2] = calPrefs.getFloat("magScale8");
-    calibration.north = calPrefs.getFloat("north");
-  }
+  calibration.gyroX = calPrefs.getFloat("gyroX", 0);
+  calibration.gyroY = calPrefs.getFloat("gyroY", 0);
+  calibration.gyroZ = calPrefs.getFloat("gyroZ", 0);
+  calibration.accelX = calPrefs.getFloat("accelX", 0);
+  calibration.accelY = calPrefs.getFloat("accelY", 0);
+  calibration.accelZ = calPrefs.getFloat("accelZ", 0);
+  calibration.magX = calPrefs.getFloat("magX", 0);
+  calibration.magY = calPrefs.getFloat("magY", 0);
+  calibration.magZ = calPrefs.getFloat("magZ", 0);
+  calibration.magScale[0][0] = calPrefs.getFloat("magScale0", 1);
+  calibration.magScale[0][1] = calPrefs.getFloat("magScale1", 0);
+  calibration.magScale[0][2] = calPrefs.getFloat("magScale2", 0);
+  calibration.magScale[1][0] = calPrefs.getFloat("magScale3", 0);
+  calibration.magScale[1][1] = calPrefs.getFloat("magScale4", 1);
+  calibration.magScale[1][2] = calPrefs.getFloat("magScale5", 0);
+  calibration.magScale[2][0] = calPrefs.getFloat("magScale6", 0);
+  calibration.magScale[2][1] = calPrefs.getFloat("magScale7", 0);
+  calibration.magScale[2][2] = calPrefs.getFloat("magScale8", 1);
+  calibration.north = calPrefs.getFloat("north", 0);
+  calibration.servoMiddle = calPrefs.getFloat("servoMiddle", 91.5);
+  calibration.maxAPSpeed = calPrefs.getFloat("maxAPSpeed", 25);
 
   return true;
 }

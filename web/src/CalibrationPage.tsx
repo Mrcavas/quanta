@@ -15,7 +15,7 @@ import {
 } from "./packets"
 import { createSessionSignal } from "./signal"
 
-const MIN_MAG_POINTS = 150
+const MIN_MAG_POINTS = 100
 
 export default function CalibrationPage(props: { ws: WebSocket; message: () => ArrayBuffer }) {
   const zeroPoint = [0, 0, 0] as Point
@@ -36,7 +36,7 @@ export default function CalibrationPage(props: { ws: WebSocket; message: () => A
     zeroPoint,
   ])
   const accelAxesLabels = ["+X", "-X", "+Y", "-Y", "+Z", "-Z"]
-  const defaultCalData = [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0]
+  const defaultCalData = [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 91.5, 25]
   const [calibrationData, setCalibrationData] = createSignal<number[]>(defaultCalData)
 
   createEffect(
@@ -81,7 +81,8 @@ export default function CalibrationPage(props: { ws: WebSocket; message: () => A
       }
 
       if (id === 0xa0) {
-        setCalibrationData(Array.from({ length: 19 }).map((_, i) => view.getFloat32(i * 4, true)))
+        console.log(view)
+        setCalibrationData(Array.from({ length: 21 }).map((_, i) => view.getFloat32(i * 4, true)))
       }
     })
   )
@@ -203,23 +204,38 @@ export default function CalibrationPage(props: { ws: WebSocket; message: () => A
         <input
           class="rounded-sm bg-gray-300"
           name="Gyro X"
-          type="number"
+          type="text"
+          inputmode="decimal"
           value={calibrationData()[0]}
-          onInput={e => setCalibrationData(prev => prev.with(0, e.target.valueAsNumber))}
+          onInput={e =>
+            !isNaN(+e.target.value) &&
+            +e.target.value !== calibrationData()[0] &&
+            setCalibrationData(prev => prev.with(0, +e.target.value))
+          }
         />
         <input
           class="rounded-sm bg-gray-300"
           name="Gyro Y"
-          type="number"
+          type="text"
+          inputmode="decimal"
           value={calibrationData()[1]}
-          onInput={e => setCalibrationData(prev => prev.with(1, e.target.valueAsNumber))}
+          onInput={e =>
+            !isNaN(+e.target.value) &&
+            +e.target.value !== calibrationData()[1] &&
+            setCalibrationData(prev => prev.with(1, +e.target.value))
+          }
         />
         <input
           class="rounded-sm bg-gray-300"
           name="Gyro Z"
-          type="number"
+          type="text"
+          inputmode="decimal"
           value={calibrationData()[2]}
-          onInput={e => setCalibrationData(prev => prev.with(2, e.target.valueAsNumber))}
+          onInput={e =>
+            !isNaN(+e.target.value) &&
+            +e.target.value !== calibrationData()[2] &&
+            setCalibrationData(prev => prev.with(2, +e.target.value))
+          }
         />
       </div>
 
@@ -228,23 +244,38 @@ export default function CalibrationPage(props: { ws: WebSocket; message: () => A
         <input
           class="rounded-sm bg-gray-300"
           name="Accel X"
-          type="number"
+          type="text"
+          inputmode="decimal"
           value={calibrationData()[3]}
-          onInput={e => setCalibrationData(prev => prev.with(3, e.target.valueAsNumber))}
+          onInput={e =>
+            !isNaN(+e.target.value) &&
+            +e.target.value !== calibrationData()[3] &&
+            setCalibrationData(prev => prev.with(3, +e.target.value))
+          }
         />
         <input
           class="rounded-sm bg-gray-300"
           name="Accel Y"
-          type="number"
+          type="text"
+          inputmode="decimal"
           value={calibrationData()[4]}
-          onInput={e => setCalibrationData(prev => prev.with(4, e.target.valueAsNumber))}
+          onInput={e =>
+            !isNaN(+e.target.value) &&
+            +e.target.value !== calibrationData()[4] &&
+            setCalibrationData(prev => prev.with(4, +e.target.value))
+          }
         />
         <input
           class="rounded-sm bg-gray-300"
           name="Accel Z"
-          type="number"
+          type="text"
+          inputmode="decimal"
           value={calibrationData()[5]}
-          onInput={e => setCalibrationData(prev => prev.with(5, e.target.valueAsNumber))}
+          onInput={e =>
+            !isNaN(+e.target.value) &&
+            +e.target.value !== calibrationData()[5] &&
+            setCalibrationData(prev => prev.with(5, +e.target.value))
+          }
         />
       </div>
 
@@ -253,23 +284,38 @@ export default function CalibrationPage(props: { ws: WebSocket; message: () => A
         <input
           class="rounded-sm bg-gray-300"
           name="Mag X"
-          type="number"
+          type="text"
+          inputmode="decimal"
           value={calibrationData()[6]}
-          onInput={e => setCalibrationData(prev => prev.with(6, e.target.valueAsNumber))}
+          onInput={e =>
+            !isNaN(+e.target.value) &&
+            +e.target.value !== calibrationData()[6] &&
+            setCalibrationData(prev => prev.with(6, +e.target.value))
+          }
         />
         <input
           class="rounded-sm bg-gray-300"
           name="Mag Y"
-          type="number"
+          type="text"
+          inputmode="decimal"
           value={calibrationData()[7]}
-          onInput={e => setCalibrationData(prev => prev.with(7, e.target.valueAsNumber))}
+          onInput={e =>
+            !isNaN(+e.target.value) &&
+            +e.target.value !== calibrationData()[7] &&
+            setCalibrationData(prev => prev.with(7, +e.target.value))
+          }
         />
         <input
           class="rounded-sm bg-gray-300"
           name="Mag Z"
-          type="number"
+          type="text"
+          inputmode="decimal"
           value={calibrationData()[8]}
-          onInput={e => setCalibrationData(prev => prev.with(8, e.target.valueAsNumber))}
+          onInput={e =>
+            !isNaN(+e.target.value) &&
+            +e.target.value !== calibrationData()[8] &&
+            setCalibrationData(prev => prev.with(8, +e.target.value))
+          }
         />
       </div>
 
@@ -278,77 +324,159 @@ export default function CalibrationPage(props: { ws: WebSocket; message: () => A
         <input
           class="rounded-sm bg-gray-300"
           name="Mag Scale 0"
-          type="number"
+          type="text"
+          inputmode="decimal"
           value={calibrationData()[9]}
-          onInput={e => setCalibrationData(prev => prev.with(9, e.target.valueAsNumber))}
+          onInput={e =>
+            !isNaN(+e.target.value) &&
+            +e.target.value !== calibrationData()[9] &&
+            setCalibrationData(prev => prev.with(9, +e.target.value))
+          }
         />
         <input
           class="rounded-sm bg-gray-300"
           name="Mag Scale 1"
-          type="number"
+          type="text"
+          inputmode="decimal"
           value={calibrationData()[10]}
-          onInput={e => setCalibrationData(prev => prev.with(10, e.target.valueAsNumber))}
+          onInput={e =>
+            !isNaN(+e.target.value) &&
+            +e.target.value !== calibrationData()[10] &&
+            setCalibrationData(prev => prev.with(10, +e.target.value))
+          }
         />
         <input
           class="rounded-sm bg-gray-300"
           name="Mag Scale 2"
-          type="number"
+          type="text"
+          inputmode="decimal"
           value={calibrationData()[11]}
-          onInput={e => setCalibrationData(prev => prev.with(11, e.target.valueAsNumber))}
+          onInput={e =>
+            !isNaN(+e.target.value) &&
+            +e.target.value !== calibrationData()[11] &&
+            setCalibrationData(prev => prev.with(11, +e.target.value))
+          }
         />
         <input
           class="rounded-sm bg-gray-300"
           name="Mag Scale 3"
-          type="number"
+          type="text"
+          inputmode="decimal"
           value={calibrationData()[12]}
-          onInput={e => setCalibrationData(prev => prev.with(12, e.target.valueAsNumber))}
+          onInput={e =>
+            !isNaN(+e.target.value) &&
+            +e.target.value !== calibrationData()[12] &&
+            setCalibrationData(prev => prev.with(12, +e.target.value))
+          }
         />
         <input
           class="rounded-sm bg-gray-300"
           name="Mag Scale 4"
-          type="number"
+          type="text"
+          inputmode="decimal"
           value={calibrationData()[13]}
-          onInput={e => setCalibrationData(prev => prev.with(13, e.target.valueAsNumber))}
+          onInput={e =>
+            !isNaN(+e.target.value) &&
+            +e.target.value !== calibrationData()[13] &&
+            setCalibrationData(prev => prev.with(13, +e.target.value))
+          }
         />
         <input
           class="rounded-sm bg-gray-300"
           name="Mag Scale 5"
-          type="number"
+          type="text"
+          inputmode="decimal"
           value={calibrationData()[14]}
-          onInput={e => setCalibrationData(prev => prev.with(14, e.target.valueAsNumber))}
+          onInput={e =>
+            !isNaN(+e.target.value) &&
+            +e.target.value !== calibrationData()[14] &&
+            setCalibrationData(prev => prev.with(14, +e.target.value))
+          }
         />
         <input
           class="rounded-sm bg-gray-300"
           name="Mag Scale 6"
-          type="number"
+          type="text"
+          inputmode="decimal"
           value={calibrationData()[15]}
-          onInput={e => setCalibrationData(prev => prev.with(15, e.target.valueAsNumber))}
+          onInput={e =>
+            !isNaN(+e.target.value) &&
+            +e.target.value !== calibrationData()[15] &&
+            setCalibrationData(prev => prev.with(15, +e.target.value))
+          }
         />
         <input
           class="rounded-sm bg-gray-300"
           name="Mag Scale 7"
-          type="number"
+          type="text"
+          inputmode="decimal"
           value={calibrationData()[16]}
-          onInput={e => setCalibrationData(prev => prev.with(16, e.target.valueAsNumber))}
+          onInput={e =>
+            !isNaN(+e.target.value) &&
+            +e.target.value !== calibrationData()[16] &&
+            setCalibrationData(prev => prev.with(16, +e.target.value))
+          }
         />
         <input
           class="rounded-sm bg-gray-300"
           name="Mag Scale 8"
-          type="number"
+          type="text"
+          inputmode="decimal"
           value={calibrationData()[17]}
-          onInput={e => setCalibrationData(prev => prev.with(17, e.target.valueAsNumber))}
+          onInput={e =>
+            !isNaN(+e.target.value) &&
+            +e.target.value !== calibrationData()[17] &&
+            setCalibrationData(prev => prev.with(17, +e.target.value))
+          }
         />
       </div>
 
-      <h4 class="mt-1 text-sm">Yaw Offset</h4>
-      <div class="grid grid-cols-3 gap-2">
-        <input
-          class="col-start-2 rounded-sm bg-gray-300"
-          name="North"
-          type="number"
-          value={calibrationData()[18]}
-          onInput={e => setCalibrationData(prev => prev.with(18, e.target.valueAsNumber))}
-        />
+      <div class="flex w-full justify-center gap-2">
+        <div class="flex w-1/3 flex-col items-center">
+          <h4 class="mt-1 text-sm">Yaw Offset</h4>
+          <input
+            class="w-full rounded-sm bg-gray-300"
+            name="North"
+            type="text"
+            inputmode="decimal"
+            value={calibrationData()[18]}
+            onInput={e =>
+              !isNaN(+e.target.value) &&
+              +e.target.value !== calibrationData()[18] &&
+              setCalibrationData(prev => prev.with(18, +e.target.value))
+            }
+          />
+        </div>
+        <div class="flex w-1/3 flex-col items-center">
+          <h4 class="mt-1 text-sm">Servo Middle</h4>
+          <input
+            class="w-full rounded-sm bg-gray-300"
+            name="Servo Middle"
+            type="text"
+            inputmode="decimal"
+            value={calibrationData()[19]}
+            onInput={e =>
+              !isNaN(+e.target.value) &&
+              +e.target.value !== calibrationData()[19] &&
+              setCalibrationData(prev => prev.with(19, +e.target.value))
+            }
+          />
+        </div>
+        <div class="flex w-1/3 flex-col items-center">
+          <h4 class="mt-1 text-sm">AP Speed</h4>
+          <input
+            class="w-full rounded-sm bg-gray-300"
+            name="Autopilot maximum speed"
+            type="text"
+            inputmode="decimal"
+            value={calibrationData()[20]}
+            onInput={e =>
+              !isNaN(+e.target.value) &&
+              +e.target.value !== calibrationData()[20] &&
+              setCalibrationData(prev => prev.with(20, +e.target.value))
+            }
+          />
+        </div>
       </div>
 
       <div class="mt-4 flex gap-4">

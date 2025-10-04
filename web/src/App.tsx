@@ -7,7 +7,7 @@ import { buildInitPacket, buildPingPacket, getPacketData } from "./packets"
 import createPersistent from "solid-persistent"
 
 export default function App() {
-  // const ws = createWS(`ws://10.137.48.73/ws`)
+  // const ws = createWS(`ws://10.20.112.73/ws`)
   const ws = createWS(`ws://${new URL(window.location.href).host}/ws`)
   ws.binaryType = "arraybuffer"
   const stateIndex = createWSState(ws)
@@ -38,7 +38,7 @@ export default function App() {
         const strBuf = new Uint8Array(buffer, 1)
         const decoder = new TextDecoder("utf-8")
         const str = decoder.decode(strBuf)
-        console.log(`Got message: ${str}`)
+        console.log(str)
       }
     })
   )

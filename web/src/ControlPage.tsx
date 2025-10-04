@@ -41,7 +41,7 @@ export default function ControlPage(props: { ws: WebSocket; message: () => Array
   return (
     <>
       <h2 class="text-md">Angle: {settings().rotation.toFixed(0)}</h2>
-      <h2 class="text-md">Speed: {((settings().speed - 1500) / 500).toFixed(0)}%</h2>
+      <h2 class="text-md">Speed: {((settings().speed - 1500) / 5).toFixed(0)}%</h2>
       <h2 class="text-md mt-1">Current Yaw: {yaw().toFixed(1)}</h2>
 
       <div class="relative my-2 size-40 overflow-hidden rounded-full bg-gray-600">
@@ -58,13 +58,13 @@ export default function ControlPage(props: { ws: WebSocket; message: () => Array
       <div class="w-full grow" />
 
       <div class="mb-1 flex w-full flex-row items-center justify-center gap-2">
-        <label class="font-mono text-nowrap">P: {kp().toFixed(1)}</label>
+        <label class="font-mono text-nowrap">P: {kp().toFixed(2)}</label>
         <input
           type="range"
           name="P"
           min={0}
-          max={10}
-          step={0.1}
+          max={2}
+          step={0.02}
           value={kp()}
           class="w-full"
           onInput={e => {
@@ -73,7 +73,7 @@ export default function ControlPage(props: { ws: WebSocket; message: () => Array
           }}
         />
       </div>
-      <div class="mb-1 flex w-full flex-row items-center justify-center gap-2">
+      {/* <div class="mb-1 flex w-full flex-row items-center justify-center gap-2">
         <label class="font-mono text-nowrap">I: {ki().toFixed(1)}</label>
         <input
           type="range"
@@ -88,15 +88,15 @@ export default function ControlPage(props: { ws: WebSocket; message: () => Array
             props.ws.send(buildUpdateCoeffPacket("i", e.target.valueAsNumber))
           }}
         />
-      </div>
+      </div> */}
       <div class="mb-4 flex w-full flex-row items-center justify-center gap-2">
-        <label class="font-mono text-nowrap">D: {kd().toFixed(1)}</label>
+        <label class="font-mono text-nowrap">D: {kd().toFixed(2)}</label>
         <input
           type="range"
           name="D"
           min={0}
-          max={10}
-          step={0.1}
+          max={2}
+          step={0.02}
           value={kd()}
           class="w-full"
           onInput={e => {
@@ -129,8 +129,8 @@ export default function ControlPage(props: { ws: WebSocket; message: () => Array
           disabled={!anchoring()}
           value={yawAnchor()}
           onInput={e => {
-            if (!isNaN(e.target.valueAsNumber)) {
-              setYawAnchor(e.target.valueAsNumber)
+            if (!isNaN(+e.target.value) && yawAnchor() !== +e.target.value) {
+              setYawAnchor(+e.target.value)
               props.ws.send(buildUpdateAnchoringPacket(yawAnchor()))
             }
           }}

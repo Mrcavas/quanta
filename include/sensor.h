@@ -2,7 +2,7 @@
 #include "freertos/task.h"
 #include <Arduino.h>
 
-#define SAMPLE_RATE 75
+#define SAMPLE_RATE 5
 
 struct RawICUData {
   float ax, ay, az;

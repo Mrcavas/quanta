@@ -92,7 +92,7 @@ export function buildCalibrationDataRequestPacket() {
 }
 
 export function buildCalibrationDataPacket(calibrationData: number[]) {
-  const [buffer, view] = makePacketView(0xa1, 19 * 4)
+  const [buffer, view] = makePacketView(0xa1, 21 * 4)
 
   calibrationData.forEach((n, i) => view.setFloat32(i * 4, n, true))
 
