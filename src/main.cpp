@@ -40,7 +40,7 @@ double gyroSum[3] = {0, 0, 0};
 uint16_t sampleIndex = 0;
 uint32_t lastPingTime;
 uint32_t lastUpdateSentTime;
-bool imuInitialized;
+int8_t imuInitialized;
 
 enum AutoPilotState {
   AP_DISABLED,
@@ -97,8 +97,7 @@ void handlePacket(uint8_t id, const uint8_t *data, size_t len) {
     sendInitPacket(pid.getKp(), pid.getKi(), pid.getKd());
     sendAnchoringPacket(&anchoring);
     sendYawAnchorPacket(yawAnchor);
-    sendMessagePacket(
-        strf("IMU is %sinitialized", imuInitialized ? "" : "not "));
+    sendMessagePacket(strf("IMU initialization: %d", imuInitialized));
   }
 
   if (id == 0xff && len == 0) {

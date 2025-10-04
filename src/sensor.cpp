@@ -3,16 +3,18 @@
 #include "packets.h"
 #include "strprintf.h"
 #include "ws.h"
+#include <ADXL345.h>
 #include <Adafruit_AHRS.h>
-#include <Adafruit_HMC5883_U.h>
-#include <Adafruit_MPU6050.h>
+#include <ITG3200.h>
+#include <MechaQMC5883.h>
 #include <Wire.h>
 #include <driver/i2c.h>
 
 const int IMU_TASK_PERIOD_MS = 1000 / SAMPLE_RATE;
 
-Adafruit_MPU6050 mpu;
-Adafruit_HMC5883_Unified hmc;
+MechaQMC5883 qmc;
+ITG3200 gyro;
+ADXL345 adxl;
 
 Adafruit_NXPSensorFusion fusion;
 static TaskHandle_t imuTaskHandle = NULL;
@@ -21,37 +23,6 @@ static SemaphoreHandle_t yawMutex;
 static IMUCallback onYawUpdateCallback = NULL;
 
 uint8_t noDelayCount = 0;
-
-uint8_t magReadReg = 0x03;
-uint8_t mpuReadReg = 0x3B;
-
-#define YAW_WINDOW 37
-static float yawBuffer[YAW_WINDOW];
-static int yawIndex = 0;
-static bool bufferFilled = false;
-
-float filterYaw(float newYawDeg) {
-  // Store new sample
-  yawBuffer[yawIndex] = newYawDeg * PI / 180.0f; // store in radians
-  yawIndex = (yawIndex + 1) % YAW_WINDOW;
-  if (yawIndex == 0)
-    bufferFilled = true;
-
-  int count = bufferFilled ? YAW_WINDOW : yawIndex;
-
-  // Average on the unit circle
-  float sumSin = 0.0f, sumCos = 0.0f;
-  for (int i = 0; i < count; i++) {
-    sumSin += sin(yawBuffer[i]);
-    sumCos += cos(yawBuffer[i]);
-  }
-
-  float avg = atan2(sumSin / count, sumCos / count); // radians
-  if (avg < 0)
-    avg += 2 * PI;
-
-  return avg * 180.0f / PI; // back to degrees
-}
 
 void imuTask(void *pvParameters) {
   // Serial.println("Task start");
@@ -62,27 +33,23 @@ void imuTask(void *pvParameters) {
   float newYaw = 0;
 
   for (;;) {
-    uint8_t buf[14];
-    RawICUData raw;
+    int mx_raw, my_raw, mz_raw;
+    int16_t gx_raw, gy_raw, gz_raw;
+    int16_t ax_raw, ay_raw, az_raw;
 
-    // mpu.getEvent();
+    adxl.getAcceleration(&ax_raw, &ay_raw, &az_raw);
+    gyro.getRotation(&gx_raw, &gy_raw, &gz_raw);
+    qmc.read(&mx_raw, &my_raw, &mz_raw);
 
-    i2c_master_write_read_device(I2C_NUM_0, MPU6050_I2CADDR_DEFAULT,
-                                 &mpuReadReg, 1, buf, 14,
-                                 1000 / portTICK_PERIOD_MS);
-    raw.ax = ((int16_t)(buf[0] << 8 | buf[1])) / 4096.0f;
-    raw.ay = ((int16_t)(buf[2] << 8 | buf[3])) / 4096.0f;
-    raw.az = ((int16_t)(buf[4] << 8 | buf[5])) / 4096.0f; // g
-    raw.gx = ((int16_t)(buf[8] << 8 | buf[9])) / 32.8f;
-    raw.gy = ((int16_t)(buf[10] << 8 | buf[11])) / 32.8f;
-    raw.gz = ((int16_t)(buf[12] << 8 | buf[13])) / 32.8f; // dps
-
-    i2c_master_write_read_device(I2C_NUM_0, HMC5883_ADDRESS_MAG, &magReadReg, 1,
-                                 buf, 6, 1000 / portTICK_PERIOD_MS);
-
-    raw.mx = ((int16_t)(buf[1] | ((int16_t)buf[0] << 8))) * 0.0909090909f;
-    raw.mz = ((int16_t)(buf[3] | ((int16_t)buf[2] << 8))) * 0.0909090909f;
-    raw.my = ((int16_t)(buf[5] | ((int16_t)buf[4] << 8))) * 0.1020408163f; // uT
+    RawICUData raw = {.ax = ax_raw * 0.004f,
+                      .ay = ay_raw * 0.004f,
+                      .az = az_raw * 0.004f,
+                      .gx = gx_raw * 0.0695652174f,
+                      .gy = gy_raw * 0.0695652174f,
+                      .gz = gz_raw * 0.0695652174f,
+                      .mx = mx_raw * 0.0083333333f,
+                      .my = my_raw * 0.0083333333f,
+                      .mz = mz_raw * 0.0083333333f};
 
     float ax = raw.ax - calibration.accelX;
     float ay = raw.ay - calibration.accelY;
@@ -130,55 +97,39 @@ void imuTask(void *pvParameters) {
   }
 }
 
-bool setupIMU(IMUCallback pidCallback) {
+int8_t setupIMU(IMUCallback pidCallback) {
   onYawUpdateCallback = pidCallback;
 
   Wire.begin();
   Wire.setClock(1000000);
 
-  if (!mpu.begin()) {
-    // Serial.println("MPU not initialized");
-    return false;
-  }
+  qmc.init();
+  qmc.setMode(Mode_Continuous, ODR_10Hz, RNG_2G, OSR_128);
 
-  mpu.setI2CBypass(true);
-  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
-  mpu.setGyroRange(MPU6050_RANGE_1000_DEG);
-  mpu.setFilterBandwidth(MPU6050_BAND_5_HZ);
+  gyro.initialize();
+  if (!gyro.testConnection())
+    return -2;
 
-  if (!hmc.begin()) {
-    // Serial.println("Magnetometer not initialized");
-    return false;
-  }
+  gyro.setDLPFBandwidth(ITG3200_DLPF_BW_10);
+  gyro.setRate(99);
 
-  uint8_t value = 0;
-  Wire.beginTransmission(0x1E);
-  Wire.write(0x00);
-  Wire.endTransmission();
-  Wire.requestFrom((uint8_t)0x1E, (uint8_t)1);
-  while (!Wire.available())
-    yield();
-  value = Wire.read();
+  adxl.initialize();
+  if (!adxl.testConnection())
+    return -3;
 
-  value &= 0b11100011;
-  value |= (0b011 << 2); // 7.5hz
-  // value |= (0b100 << 2); // 15hz
-  // value |= (0b101 << 2); // 30hz
-  // value |= (0b110 << 2); // 75hz
-  // value |= (0b111 << 2); // 220hz
-
-  Wire.beginTransmission(0x1E);
-  Wire.write(0x00);
-  Wire.write(value);
-  Wire.endTransmission();
+  adxl.setRange(0x0);
+  adxl.setRate(ADXL345_RATE_12P5);
+  adxl.setLowPowerEnabled(false);
+  adxl.setAutoSleepEnabled(false);
+  adxl.setMeasureEnabled(true);
 
   yawMutex = xSemaphoreCreateMutex();
   if (yawMutex == NULL)
-    return false;
+    return -4;
 
   xTaskCreatePinnedToCore(imuTask, "IMU Task", 8192, NULL, 1, &imuTaskHandle,
                           0);
-  return true;
+  return 0;
 }
 
 float getYaw() {

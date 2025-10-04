@@ -2,7 +2,7 @@
 #include "freertos/task.h"
 #include <Arduino.h>
 
-#define SAMPLE_RATE 5
+#define SAMPLE_RATE 10
 
 struct RawICUData {
   float ax, ay, az;
@@ -12,5 +12,5 @@ struct RawICUData {
 
 typedef void (*IMUCallback)(float yaw, RawICUData raw);
 
-bool setupIMU(IMUCallback pidCallback);
+int8_t setupIMU(IMUCallback pidCallback);
 float getYaw();

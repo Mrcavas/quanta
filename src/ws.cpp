@@ -17,10 +17,10 @@ bool setupWS(
         onMessage) {
 
   if (!LittleFS.begin()) {
-    // Serial.println("LittleFS mount failed!");
+    Serial.println("LittleFS mount failed!");
     return false;
   }
-  // Serial.println("LittleFS mounted, connecting to WiFi");
+  Serial.println("LittleFS mounted, connecting to WiFi");
 
   WiFi.mode(WIFI_STA);
   esp_wifi_set_ps(WIFI_PS_NONE);
@@ -29,12 +29,12 @@ bool setupWS(
 
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
-    // Serial.print(WiFi.status());
+    Serial.print(WiFi.status());
   }
 
-  // Serial.println("\nWiFi connected");
-  // Serial.print("IP address: ");
-  // Serial.println(WiFi.localIP());
+  Serial.println("\nWiFi connected");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
 
   // serves root html page
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
