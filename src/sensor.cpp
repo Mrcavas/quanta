@@ -104,21 +104,21 @@ int8_t setupIMU(IMUCallback pidCallback) {
   Wire.setClock(1000000);
 
   qmc.init();
-  qmc.setMode(Mode_Continuous, ODR_10Hz, RNG_2G, OSR_128);
+  qmc.setMode(Mode_Continuous, ODR_50Hz, RNG_2G, OSR_128);
 
   gyro.initialize();
   if (!gyro.testConnection())
     return -2;
 
-  gyro.setDLPFBandwidth(ITG3200_DLPF_BW_10);
-  gyro.setRate(99);
+  gyro.setDLPFBandwidth(ITG3200_DLPF_BW_98);
+  gyro.setRate(19);
 
   adxl.initialize();
   if (!adxl.testConnection())
     return -3;
 
   adxl.setRange(0x0);
-  adxl.setRate(ADXL345_RATE_12P5);
+  adxl.setRate(ADXL345_RATE_50);
   adxl.setLowPowerEnabled(false);
   adxl.setAutoSleepEnabled(false);
   adxl.setMeasureEnabled(true);

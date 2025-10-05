@@ -243,7 +243,7 @@ void setup() {
 
   loadCoefficients();
 
-  delay(1500);
+  delay(6500);
 
   writeServo(10);
   delay(100);
@@ -275,8 +275,6 @@ void setup() {
 }
 
 void loop() {
-  tickWS();
-
   if (apState == AP_DISABLED) {
     if (millis() - lastUpdateSentTime > 180) {
       lastUpdateSentTime = millis();
@@ -287,6 +285,7 @@ void loop() {
         sendRotationPacket(getYaw());
     }
 
+    tickWS();
     return;
   }
 
