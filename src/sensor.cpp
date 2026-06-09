@@ -4,9 +4,10 @@
 #include "strprintf.h"
 #include "ws.h"
 #include <ADXL345.h>
-#include <Adafruit_AHRS.h>
+#include <Fusion.h>
 #include <ITG3200.h>
 #include <MechaQMC5883.h>
+#include <RunningAverage.h>
 #include <Wire.h>
 #include <driver/i2c.h>
 
@@ -16,7 +17,6 @@ MechaQMC5883 qmc;
 ITG3200 gyro;
 ADXL345 adxl;
 
-Adafruit_NXPSensorFusion fusion;
 static TaskHandle_t imuTaskHandle = NULL;
 static float yaw = 0.0f;
 static SemaphoreHandle_t yawMutex;
@@ -24,13 +24,61 @@ static IMUCallback onYawUpdateCallback = NULL;
 
 uint8_t noDelayCount = 0;
 
+RunningAverage magX(15);
+RunningAverage magY(15);
+RunningAverage magZ(15);
+RunningAverage gyroX(15);
+RunningAverage gyroY(15);
+RunningAverage gyroZ(15);
+
+#define YAW_WINDOW 15
+static float yawBuffer[YAW_WINDOW];
+static int yawIndex = 0;
+static bool bufferFilled = false;
+
+float filterYaw(float newYawDeg) {
+  // Store new sample
+  yawBuffer[yawIndex] = newYawDeg * PI / 180.0f; // store in radians
+  yawIndex = (yawIndex + 1) % YAW_WINDOW;
+  if (yawIndex == 0)
+    bufferFilled = true;
+
+  int count = bufferFilled ? YAW_WINDOW : yawIndex;
+
+  // Average on the unit circle
+  float sumSin = 0.0f, sumCos = 0.0f;
+  for (int i = 0; i < count; i++) {
+    sumSin += sin(yawBuffer[i]);
+    sumCos += cos(yawBuffer[i]);
+  }
+
+  float avg = atan2(sumSin / count, sumCos / count); // radians
+  if (avg < 0)
+    avg += 2 * PI;
+
+  return avg * 180.0f / PI; // back to degrees
+}
+
 void imuTask(void *pvParameters) {
   // Serial.println("Task start");
-  fusion.begin(SAMPLE_RATE);
-  // fusion.setBeta(0.2);
+
+  FusionOffset offset;
+  FusionAhrs ahrs;
+
+  FusionOffsetInitialise(&offset, SAMPLE_RATE);
+  FusionAhrsInitialise(&ahrs);
+
+  const FusionAhrsSettings settings = {
+      .convention = FusionConventionNed,
+      .gain = 0.6f,
+      .gyroscopeRange = 1000.0f,
+      .accelerationRejection = 10.0f,
+      .magneticRejection = 10.0f,
+      .recoveryTriggerPeriod = 5 * SAMPLE_RATE,
+  };
+  FusionAhrsSetSettings(&ahrs, &settings);
 
   TickType_t xLastWakeTime = xTaskGetTickCount();
-  float newYaw = 0;
 
   for (;;) {
     int mx_raw, my_raw, mz_raw;
@@ -41,15 +89,22 @@ void imuTask(void *pvParameters) {
     gyro.getRotation(&gx_raw, &gy_raw, &gz_raw);
     qmc.read(&mx_raw, &my_raw, &mz_raw);
 
+    gyroX.add(gx_raw * 0.0695652174f);
+    gyroY.add(gy_raw * 0.0695652174f);
+    gyroZ.add(gz_raw * 0.0695652174f);
+    magX.add(mx_raw * 0.0083333333f);
+    magY.add(my_raw * 0.0083333333f);
+    magZ.add(mz_raw * 0.0083333333f);
+
     RawICUData raw = {.ax = ax_raw * 0.004f,
                       .ay = ay_raw * 0.004f,
                       .az = az_raw * 0.004f,
-                      .gx = gx_raw * 0.0695652174f,
-                      .gy = gy_raw * 0.0695652174f,
-                      .gz = gz_raw * 0.0695652174f,
-                      .mx = mx_raw * 0.0083333333f,
-                      .my = my_raw * 0.0083333333f,
-                      .mz = mz_raw * 0.0083333333f};
+                      .gx = gyroX.getAverage(),
+                      .gy = gyroY.getAverage(),
+                      .gz = gyroZ.getAverage(),
+                      .mx = magX.getAverage(),
+                      .my = magY.getAverage(),
+                      .mz = magZ.getAverage()};
 
     float ax = raw.ax - calibration.accelX;
     float ay = raw.ay - calibration.accelY;
@@ -71,11 +126,25 @@ void imuTask(void *pvParameters) {
                      calibration.magScale[2][1] * my +
                      calibration.magScale[2][2] * mz;
 
-    fusion.update(gx, gy, gz, ax, ay, az, mx_final, my_final, mz_final);
+    const uint32_t timestamp = micros();
 
-    newYaw = fusion.getYaw();
-    newYaw = fmodf(newYaw - calibration.north + 360.0f, 360.0f);
-    // newYaw = filterYaw(newYaw);
+    FusionVector gyroscope = {gx, gy, gz};
+    FusionVector accelerometer = {ax, ay, az};
+    FusionVector magnetometer = {mx_final, my_final, mz_final};
+
+    gyroscope = FusionOffsetUpdate(&offset, gyroscope);
+
+    static uint32_t previousTimestamp;
+    const float deltaTime = (float)(timestamp - previousTimestamp) / 1000000;
+    previousTimestamp = timestamp;
+
+    FusionAhrsUpdate(&ahrs, gyroscope, accelerometer, magnetometer, deltaTime);
+
+    const FusionEuler euler =
+        FusionQuaternionToEuler(FusionAhrsGetQuaternion(&ahrs));
+
+    float newYaw = fmodf(euler.angle.yaw - calibration.north + 360.0f, 360.0f);
+    newYaw = filterYaw(newYaw);
 
     if (xSemaphoreTake(yawMutex, (TickType_t)10) == pdTRUE) {
       yaw = newYaw;

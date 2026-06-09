@@ -191,7 +191,7 @@ void setup() {
 
       if (sampleIndex % 50 == 0) {
         sendGyroCalibrationProgressPacket((float)sampleIndex /
-                                          (float)GYRO_SAMPLES * 100.0);
+                                          ((float)GYRO_SAMPLES) * 100.0f);
       }
 
       if (sampleIndex == GYRO_SAMPLES) {
@@ -251,14 +251,14 @@ void setup() {
 
   delay(1500);
 
-  if (digitalRead(BUTTON_PIN)) {
-    writeServo(-10);
-    delay(100);
-    writeServo(0);
+  // if (digitalRead(BUTTON_PIN)) {
+  //   writeServo(-10);
+  //   delay(100);
+  //   writeServo(0);
 
-    apState = AP_READY;
-    return;
-  }
+  //   apState = AP_READY;
+  //   return;
+  // }
 
   writeServo(10);
   delay(100);
